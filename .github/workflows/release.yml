@@ -51,9 +51,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp app/build/outputs/apk/release/app-release.apk plex-music.apk
+          cp app/build/outputs/apk/release/app-release.apk Plex.apk
           gh release create "$GITHUB_REF_NAME" \
             --title "BETA-${GITHUB_REF_NAME#BETA-}" \
             --notes "**${GITHUB_REF_NAME#BETA-} — ${GITHUB_REF_NAME}.**" \
             --generate-notes \
-            plex-music.apk
+            Plex.apk
