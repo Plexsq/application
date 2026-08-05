@@ -48,6 +48,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import me.plexs.music.CrashLogger
 import me.plexs.music.PlexApp
 import me.plexs.music.data.api.SearchResults
 import me.plexs.music.data.api.Song
@@ -69,6 +70,7 @@ fun SearchScreen(services: PlexApp.Services) {
     var searchJob by remember { mutableStateOf<Job?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var gen by remember { mutableStateOf(0) }
+    var lastCrash by remember { mutableStateOf(CrashLogger.readLatest(context)) }
 
     suspend fun runSearch(q: String) {
         val g = ++gen
@@ -147,6 +149,37 @@ fun SearchScreen(services: PlexApp.Services) {
         )
         Spacer(Modifier.height(16.dp))
 
+        lastCrash?.let { crash ->
+            androidx.compose.material3.Card(
+                onClick = {
+                    CrashLogger.clear(context)
+                    lastCrash = null
+                },
+                colors = androidx.compose.material3.CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(Modifier.padding(12.dp)) {
+                    Text(
+                        "Previous crash detected — tap to dismiss",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = crash.lines().take(8).joinToString("\n"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        maxLines = 8,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+        }
+
         when {
             loading -> {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -184,6 +217,27 @@ fun SearchScreen(services: PlexApp.Services) {
                             )
                         }
                     }
+                    if (songs.isNotEmpty()) {
+                        item {
+                            SectionTitle("Songs")
+                        }
+                        items(songs) { song ->
+                            SongRow(song = song, onPlay = {
+                                PlaybackController.playSongs(context, songs, songs.indexOf(song))
+                            })
+                        }
+                    }
+                    if (r.videos.isNotEmpty()) {
+                        item {
+                            SectionTitle("Related")
+                        }
+                        items(r.videos) { song ->
+                            SongRow(song = song, onPlay = {
+                                val all = songs + r.videos
+                                PlaybackController.playSongs(context, all, songs.size + r.videos.indexOf(song))
+                            })
+                        }
+                    }
                     if (r.playlists.isNotEmpty()) {
                         item {
                             SectionTitle("Playlists")
@@ -195,29 +249,6 @@ fun SearchScreen(services: PlexApp.Services) {
                                 subtitle = pl.author?.let { "$it · ${pl.itemCount ?: "?"} tracks" },
                                 onClick = {},
                             )
-                        }
-                    }
-                    if (r.albums.isNotEmpty()) {
-                        item {
-                            SectionTitle("Albums")
-                        }
-                        items(r.albums) { album ->
-                            CardRow(
-                                thumbnail = album.thumbnail,
-                                title = album.title ?: album.name ?: "",
-                                subtitle = album.artist?.let { "$it · ${album.year ?: ""}" },
-                                onClick = {},
-                            )
-                        }
-                    }
-                    if (songs.isNotEmpty()) {
-                        item {
-                            SectionTitle("Songs")
-                        }
-                        items(songs) { song ->
-                            SongRow(song = song, onPlay = {
-                                PlaybackController.playSongs(context, songs, songs.indexOf(song))
-                            })
                         }
                     }
                 }

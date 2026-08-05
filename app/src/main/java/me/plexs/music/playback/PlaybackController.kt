@@ -3,7 +3,6 @@ package me.plexs.music.playback
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
@@ -119,7 +118,7 @@ object PlaybackController {
             .setSessionActivity(activityIntent)
             .build()
         session = s
-        startService(context)
+        ensureServiceStarted(context)
         return s
     }
 
@@ -128,7 +127,7 @@ object PlaybackController {
             ensureSession(context)
             player ?: return
         }
-        startService(context)
+        ensureServiceStarted(context)
         val item = MediaItem.Builder()
             .setUri(url)
             .setMediaMetadata(
@@ -181,8 +180,8 @@ object PlaybackController {
         _hasItem.value = false
     }
 
-    private fun startService(context: Context) {
+    private fun ensureServiceStarted(context: Context) {
         val intent = Intent(context, PlaybackService::class.java)
-        ContextCompat.startForegroundService(context, intent)
+        context.startService(intent)
     }
 }

@@ -18,6 +18,11 @@ class PlexApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            CrashLogger.capture(this, "uncaught:${thread.name}", throwable)
+            defaultHandler?.uncaughtException(thread, throwable)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 "playback",
