@@ -52,6 +52,7 @@ import me.plexs.music.PlexApp
 import me.plexs.music.data.api.SearchResults
 import me.plexs.music.data.api.Song
 import me.plexs.music.playback.PlaybackController
+import me.plexs.music.ui.components.UpdateDialog
 import me.plexs.music.ui.theme.PlexAccent
 import me.plexs.music.ui.theme.PlexMuted
 import me.plexs.music.ui.theme.PlexSurfaceVariant
@@ -86,7 +87,15 @@ fun SearchScreen(services: PlexApp.Services) {
             .onFailure { e ->
                 if (g != gen) return@onFailure
                 if (e is CancellationException) return@onFailure
-                error = if (e.message?.startsWith("Search failed (") == true) e.message else "Search failed. Try again."
+                val msg = e.message ?: e.javaClass.simpleName
+                error = when {
+                    msg.startsWith("Search failed (") -> msg
+                    msg.contains("timeout", ignoreCase = true) -> "Search timed out. Try again."
+                    msg.contains("Unable to resolve host", ignoreCase = true) -> "No connection."
+                    e.javaClass.simpleName.contains("Serialization", ignoreCase = true) ||
+                        e.javaClass.simpleName.contains("Parser", ignoreCase = true) -> "Unexpected response. Try again."
+                    else -> "Search failed ($msg)"
+                }
             }
         if (g == gen) loading = false
     }
@@ -168,6 +177,7 @@ fun SearchScreen(services: PlexApp.Services) {
                 }
             }
         }
+        UpdateDialog(services)
     }
 }
 
