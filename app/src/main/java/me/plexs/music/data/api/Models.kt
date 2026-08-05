@@ -1,6 +1,39 @@
 package me.plexs.music.data.api
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+
+private object FlexibleLongSerializer : KSerializer<Long?> {
+    override val descriptor: SerialDescriptor =
+        PrimitiveSerialDescriptor("FlexibleLong", PrimitiveKind.LONG)
+
+    override fun deserialize(decoder: Decoder): Long? {
+        val json = decoder as? kotlinx.serialization.json.JsonDecoder
+            ?: return decoder.decodeLong()
+        return when (val el = json.decodeJsonElement()) {
+            is kotlinx.serialization.json.JsonPrimitive -> {
+                if (el.isString) {
+                    el.content.trim().replace(",", "")
+                        .replace("M", "000000").replace("K", "000")
+                        .toLongOrNull()
+                } else {
+                    el.longOrNull
+                }
+            }
+            is kotlinx.serialization.json.JsonNull -> null
+            else -> null
+        }
+    }
+
+    override fun serialize(encoder: Encoder, value: Long?) {
+        if (value == null) encoder.encodeNull() else encoder.encodeLong(value)
+    }
+}
 
 @Serializable
 data class InnertubeClient(
@@ -62,6 +95,7 @@ data class Song(
     val duration: Int = 0,
     val durationText: String? = null,
     val thumbnail: String? = null,
+    @Serializable(with = FlexibleLongSerializer::class)
     val plays: Long? = null,
     val year: Int? = null,
 )
