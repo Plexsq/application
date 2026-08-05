@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Plex</string>
+    <string name="playback_channel_name">Playback</string>
 </resources>

@@ -7,14 +7,27 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
+import androidx.compose.ui.draw.clip
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.compose.NavHost
@@ -30,6 +43,7 @@ import me.plexs.music.ui.screens.home.HomeScreen
 import me.plexs.music.ui.screens.player.NowPlayingScreen
 import me.plexs.music.ui.screens.search.SearchScreen
 import me.plexs.music.ui.screens.splash.SplashScreen
+import me.plexs.music.ui.theme.PlexMuted
 import me.plexs.music.ui.theme.PlexTheme
 
 class MainActivity : ComponentActivity() {
@@ -87,9 +101,22 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     composable(Destinations.HOME) {
-                        HomeScreen(services, authVm) {
-                            navController.navigate(Destinations.SIGN_IN) {
-                                popUpTo(Destinations.SPLASH) { inclusive = true }
+                        PlayerShell(
+                            onPlayerTap = {
+                                navController.navigate(Destinations.NOW_PLAYING)
+                            },
+                            onHome = { /* already home */ },
+                            onSearch = {
+                                navController.navigate(Destinations.SEARCH) {
+                                    popUpTo(Destinations.HOME) { inclusive = true }
+                                }
+                            },
+                            currentRoute = Destinations.HOME,
+                        ) {
+                            HomeScreen(services, authVm) {
+                                navController.navigate(Destinations.SIGN_IN) {
+                                    popUpTo(Destinations.SPLASH) { inclusive = true }
+                                }
                             }
                         }
                     }
@@ -98,6 +125,13 @@ class MainActivity : ComponentActivity() {
                             onPlayerTap = {
                                 navController.navigate(Destinations.NOW_PLAYING)
                             },
+                            onHome = {
+                                navController.navigate(Destinations.HOME) {
+                                    popUpTo(Destinations.SEARCH) { inclusive = true }
+                                }
+                            },
+                            onSearch = { /* already search */ },
+                            currentRoute = Destinations.SEARCH,
                         ) {
                             SearchScreen(services)
                         }
@@ -105,6 +139,13 @@ class MainActivity : ComponentActivity() {
                     composable(Destinations.NOW_PLAYING) {
                         PlayerShell(
                             onPlayerTap = { navController.popBackStack() },
+                            onHome = {
+                                navController.popBackStack(Destinations.SEARCH, inclusive = false)
+                            },
+                            onSearch = {
+                                navController.popBackStack(Destinations.SEARCH, inclusive = false)
+                            },
+                            currentRoute = Destinations.SEARCH,
                         ) {
                             NowPlayingScreen(onClose = { navController.popBackStack() })
                         }
@@ -121,13 +162,23 @@ class AuthVmFactory(private val services: PlexApp.Services) : ViewModelProvider.
 }
 
 @Composable
-fun PlayerShell(onPlayerTap: () -> Unit, content: @Composable () -> Unit) {
+fun PlayerShell(
+    onPlayerTap: () -> Unit,
+    onHome: () -> Unit,
+    onSearch: () -> Unit,
+    currentRoute: String,
+    content: @Composable () -> Unit,
+) {
     Scaffold(
         bottomBar = {
-            PlayerBar(
-                onTap = onPlayerTap,
-                modifier = Modifier.navigationBarsPadding(),
-            )
+            Column {
+                PlayerBar(onTap = onPlayerTap)
+                BottomNav(
+                    currentRoute = currentRoute,
+                    onHome = onHome,
+                    onSearch = onSearch,
+                )
+            }
         },
     ) { innerPadding ->
         androidx.compose.foundation.layout.Box(
@@ -137,5 +188,54 @@ fun PlayerShell(onPlayerTap: () -> Unit, content: @Composable () -> Unit) {
         ) {
             content()
         }
+    }
+}
+
+@Composable
+fun BottomNav(
+    currentRoute: String,
+    onHome: () -> Unit,
+    onSearch: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(androidx.compose.material3.MaterialTheme.colorScheme.surface)
+            .navigationBarsPadding()
+            .padding(vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        NavItem(
+            label = "Home",
+            icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
+            active = currentRoute == Destinations.HOME,
+            onClick = onHome,
+        )
+        NavItem(
+            label = "Search",
+            icon = { Icon(Icons.Default.Search, contentDescription = "Search") },
+            active = currentRoute == Destinations.SEARCH || currentRoute == Destinations.NOW_PLAYING,
+            onClick = onSearch,
+        )
+    }
+}
+
+@Composable
+fun NavItem(
+    label: String,
+    icon: @Composable () -> Unit,
+    active: Boolean,
+    onClick: () -> Unit,
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 24.dp, vertical = 4.dp),
+    ) {
+        val tint = if (active) androidx.compose.material3.MaterialTheme.colorScheme.primary else PlexMuted
+        Box(contentAlignment = Alignment.Center) { icon() }
     }
 }

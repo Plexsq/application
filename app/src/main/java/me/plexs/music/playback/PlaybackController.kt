@@ -41,6 +41,15 @@ object PlaybackController {
     private val _queueIndex = MutableStateFlow(-1)
     val queueIndex: StateFlow<Int> = _queueIndex
 
+    private val _shuffle = MutableStateFlow(false)
+    val shuffle: StateFlow<Boolean> = _shuffle
+
+    private val _repeat = MutableStateFlow(0)
+    val repeat: StateFlow<Int> = _repeat
+
+    private val _favorites = MutableStateFlow<List<Song>>(emptyList())
+    val favorites: StateFlow<List<Song>> = _favorites
+
     @Volatile
     private var contextRef: android.content.Context? = null
 
@@ -56,15 +65,53 @@ object PlaybackController {
     fun playSongs(context: android.content.Context, songs: List<Song>, index: Int) {
         if (songs.isEmpty()) return
         contextRef = context.applicationContext
-        _queue.value = songs
-        _queueIndex.value = index
-        playAt(context.applicationContext, index)
+        val (songs2, index2) = normalizeForShuffle(songs, index)
+        _queue.value = songs2
+        _queueIndex.value = index2
+        playAt(context.applicationContext, index2)
+    }
+
+    private fun normalizeForShuffle(songs: List<Song>, index: Int): Pair<List<Song>, Int> {
+        if (!_shuffle.value || songs.size <= 1) return songs to index
+        val list = songs.toMutableList()
+        val first = list.removeAt(index)
+        list.shuffle()
+        list.add(0, first)
+        return list to 0
     }
 
     fun playAtIndex(index: Int) {
         val q = _queue.value
         if (index < 0 || index >= q.size) return
         playAt(contextRef, index)
+    }
+
+    fun toggleShuffle() {
+        _shuffle.value = !_shuffle.value
+    }
+
+    fun cycleRepeat() {
+        _repeat.value = (_repeat.value + 1) % 3
+        player?.repeatMode = when (_repeat.value) {
+            0 -> Player.REPEAT_MODE_OFF
+            1 -> Player.REPEAT_MODE_ALL
+            else -> Player.REPEAT_MODE_ONE
+        }
+    }
+
+    fun isFavorited(id: String): Boolean = _favorites.value.any { it.id == id }
+
+    fun toggleFavorite(song: Song) {
+        val cur = _favorites.value.toMutableList()
+        val idx = cur.indexOfFirst { it.id == song.id }
+        if (idx >= 0) cur.removeAt(idx) else cur.add(song)
+        _favorites.value = cur
+    }
+
+    fun addFavorites(songs: List<Song>) {
+        val cur = _favorites.value.toMutableList()
+        for (s in songs) if (cur.none { it.id == s.id }) cur.add(s)
+        _favorites.value = cur
     }
 
     fun next() {
@@ -80,6 +127,10 @@ object PlaybackController {
     }
 
     private fun onPlaybackEnded() {
+        if (_repeat.value == 2) {
+            playAt(contextRef, _queueIndex.value)
+            return
+        }
         playAt(contextRef, _queueIndex.value + 1)
     }
 

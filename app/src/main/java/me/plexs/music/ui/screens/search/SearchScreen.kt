@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -107,12 +108,21 @@ fun SearchScreen(services: PlexApp.Services) {
             .fillMaxSize()
             .padding(horizontal = 20.dp),
     ) {
-        Spacer(Modifier.height(20.dp))
-        Text(
-            text = "Search",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Black,
-        )
+        Spacer(Modifier.height(16.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "PLEX",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Black,
+                color = PlexAccent,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = "Search",
+                style = MaterialTheme.typography.titleMedium,
+                color = PlexMuted,
+            )
+        }
         Spacer(Modifier.height(16.dp))
         OutlinedTextField(
             value = query,
@@ -221,9 +231,9 @@ fun SearchScreen(services: PlexApp.Services) {
                         item {
                             SectionTitle("Songs")
                         }
-                        items(songs) { song ->
+                        itemsIndexed(songs) { i, song ->
                             SongRow(song = song, onPlay = {
-                                PlaybackController.playSongs(context, songs, songs.indexOf(song))
+                                PlaybackController.playSongs(context, songs, i)
                             })
                         }
                     }
@@ -231,10 +241,10 @@ fun SearchScreen(services: PlexApp.Services) {
                         item {
                             SectionTitle("Related")
                         }
-                        items(r.videos) { song ->
+                        itemsIndexed(r.videos) { i, song ->
                             SongRow(song = song, onPlay = {
                                 val all = songs + r.videos
-                                PlaybackController.playSongs(context, all, songs.size + r.videos.indexOf(song))
+                                PlaybackController.playSongs(context, all, songs.size + i)
                             })
                         }
                     }
