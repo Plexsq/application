@@ -46,7 +46,6 @@ fun HomeScreen(services: PlexApp.Services, vm: AuthViewModel, onSignedOut: () ->
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var updateUrl by remember { mutableStateOf<String?>(null) }
     var resolving by remember { mutableStateOf(false) }
     var playError by remember { mutableStateOf<String?>(null) }
     val playing by PlaybackController.playing.collectAsState()
@@ -54,39 +53,12 @@ fun HomeScreen(services: PlexApp.Services, vm: AuthViewModel, onSignedOut: () ->
 
     val notifPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
-    LaunchedEffect(Unit) {
-        runCatching {
-            val app = services.bootstrap.latest() ?: return@runCatching
-            val latest = app.latestVersion ?: return@runCatching
-            if (services.notifier.updateChecker.isNewer(BuildConfig.VERSION_NAME, latest)) {
-                updateUrl = app.apkUrl ?: "https://github.com/Plexsq/plex-app/releases/latest"
-            }
-        }
-    }
-
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
         Spacer(Modifier.height(32.dp))
         Text("PLEX", color = PlexAccent, fontSize = 32.sp, fontWeight = FontWeight.Black)
         Spacer(Modifier.height(20.dp))
         Text("Signed in as @${user?.username ?: "you"}", fontSize = 16.sp)
         Spacer(Modifier.height(32.dp))
-
-        updateUrl?.let { url ->
-            androidx.compose.material3.Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("A new version of Plex is available.", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.height(8.dp))
-                    androidx.compose.material3.TextButton(onClick = {
-                        context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
-                    }) { Text("Update") }
-                }
-            }
-            Spacer(Modifier.height(16.dp))
-        }
 
         Text("Playback", fontSize = 18.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))

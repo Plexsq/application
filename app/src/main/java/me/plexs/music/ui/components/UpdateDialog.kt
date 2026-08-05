@@ -15,6 +15,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import me.plexs.music.BuildConfig
 import me.plexs.music.PlexApp
 import me.plexs.music.ui.theme.PlexAccent
