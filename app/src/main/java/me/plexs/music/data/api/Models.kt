@@ -154,6 +154,33 @@ data class SearchCard(
 )
 
 @Serializable
+data class UserData(
+    val queue: List<Song> = emptyList(),
+    val queueIndex: Int = -1,
+    val favorites: List<Song> = emptyList(),
+    val recentlyPlayed: List<Song> = emptyList(),
+    val playlists: List<UserPlaylist> = emptyList(),
+)
+
+@Serializable
+data class UserPlaylist(
+    val id: String = "",
+    val name: String = "",
+    val image: String? = null,
+    val songs: List<Song> = emptyList(),
+    val createdAt: Long = 0,
+)
+
+@Serializable
+data class UserDataResp(val data: UserData = UserData())
+
+@Serializable
+data class HistoryItem(val query: String = "", val searchedAt: String = "")
+
+@Serializable
+data class HistoryResp(val history: List<HistoryItem> = emptyList())
+
+@Serializable
 data class AlbumPage(
     val title: String = "",
     val artist: String? = null,

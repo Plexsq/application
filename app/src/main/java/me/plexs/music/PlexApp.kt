@@ -42,5 +42,6 @@ class PlexApp : Application() {
         val auth = AuthRepository(session)
         val bootstrap = BootstrapRepository()
         val catalog = CatalogRepository(session)
+        val userData = me.plexs.music.data.api.UserDataRepository(session)
     }
 }

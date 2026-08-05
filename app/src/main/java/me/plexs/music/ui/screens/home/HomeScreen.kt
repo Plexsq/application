@@ -46,6 +46,7 @@ import me.plexs.music.ui.theme.PlexSurfaceVariant
 fun HomeScreen(services: PlexApp.Services, vm: AuthViewModel, onSignedOut: () -> Unit) {
     val context = LocalContext.current
     val favorites by PlaybackController.favorites.collectAsState()
+    val recent by PlaybackController.recentlyPlayed.collectAsState()
     val user = services.session.user
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -67,63 +68,28 @@ fun HomeScreen(services: PlexApp.Services, vm: AuthViewModel, onSignedOut: () ->
         }
         Spacer(Modifier.height(20.dp))
 
-        if (favorites.isEmpty()) {
-            androidx.compose.foundation.layout.Box(
-                Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        LazyColumn(Modifier.fillMaxWidth()) {
+            item {
+                LikedSongsHeader(favorites, context)
+            }
+            if (recent.isNotEmpty()) {
+                item { Spacer(Modifier.height(24.dp)) }
+                item {
                     Text(
-                        text = "No liked songs yet.\nTap the heart on any song.",
-                        color = PlexMuted,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        "Recently Played",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 24.dp),
                     )
-                    Spacer(Modifier.height(24.dp))
-                    OutlinedButton(onClick = { vm.signOut(onSignedOut) }) { Text("Sign out") }
+                    Spacer(Modifier.height(8.dp))
+                }
+                itemsIndexed(recent) { i, song ->
+                    SongRow(song, onPlay = {
+                        PlaybackController.playSongs(context, recent, i)
+                    })
                 }
             }
-        } else {
-            LazyColumn(Modifier.fillMaxWidth()) {
-                item {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 24.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(PlexAccent)
-                            .clickable {
-                                PlaybackController.playSongs(context, favorites, 0)
-                            }
-                            .padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            Icons.Default.Favorite,
-                            contentDescription = "Liked",
-                            tint = Color.White,
-                            modifier = Modifier.width(28.dp),
-                        )
-                        Spacer(Modifier.width(14.dp))
-                        androidx.compose.foundation.layout.Column(Modifier.weight(1f)) {
-                            Text(
-                                "Liked Songs",
-                                color = Color.White,
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.Bold,
-                            )
-                            Text(
-                                "${favorites.size} song${if (favorites.size != 1) "s" else ""}",
-                                color = Color.White.copy(alpha = 0.75f),
-                                fontSize = 13.sp,
-                            )
-                        }
-                        Icon(
-                            Icons.Default.PlayArrow,
-                            contentDescription = "Play",
-                            tint = Color.White,
-                        )
-                    }
-                }
+            if (favorites.isNotEmpty()) {
                 item { Spacer(Modifier.height(24.dp)) }
                 item {
                     Text(
@@ -135,25 +101,66 @@ fun HomeScreen(services: PlexApp.Services, vm: AuthViewModel, onSignedOut: () ->
                     Spacer(Modifier.height(8.dp))
                 }
                 itemsIndexed(favorites) { i, song ->
-                    LikedRow(song, index = i, onPlay = {
+                    SongRow(song, onPlay = {
                         PlaybackController.playSongs(context, favorites, i)
                     })
                 }
-                item { Spacer(Modifier.height(24.dp)) }
-                if (favorites.isNotEmpty()) {
-                    item {
-                        OutlinedButton(
-                            onClick = { vm.signOut(onSignedOut) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 24.dp),
-                        ) { Text("Sign out") }
-                    }
-                    item { Spacer(Modifier.height(24.dp)) }
-                }
             }
+            item { Spacer(Modifier.height(24.dp)) }
+            item {
+                OutlinedButton(
+                    onClick = { vm.signOut(onSignedOut) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp),
+                ) { Text("Sign out") }
+            }
+            item { Spacer(Modifier.height(24.dp)) }
         }
     }
+}
+
+@Composable
+private fun LikedSongsHeader(favorites: List<Song>, onPlay: (() -> Unit)? = null) {
+    val context = LocalContext.current
+    val playBlock = onPlay ?: { PlaybackController.playSongs(context, favorites, 0) }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(PlexAccent)
+            .clickable { playBlock() }
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Default.Favorite,
+            contentDescription = "Liked",
+            tint = Color.White,
+            modifier = Modifier.width(28.dp),
+        )
+        Spacer(Modifier.width(14.dp))
+        androidx.compose.foundation.layout.Column(Modifier.weight(1f)) {
+            Text(
+                "Liked Songs",
+                color = Color.White,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                "${favorites.size} song${if (favorites.size != 1) "s" else ""}",
+                color = Color.White.copy(alpha = 0.75f),
+                fontSize = 13.sp,
+            )
+        }
+        Icon(
+            Icons.Default.PlayArrow,
+            contentDescription = "Play",
+            tint = Color.White,
+        )
+    }
+    if (favorites.isEmpty()) Spacer(Modifier.height(12.dp))
 }
 
 private fun timeGreeting(): String {
@@ -166,7 +173,7 @@ private fun timeGreeting(): String {
 }
 
 @Composable
-fun LikedRow(song: Song, index: Int, onPlay: () -> Unit) {
+fun SongRow(song: Song, onPlay: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()

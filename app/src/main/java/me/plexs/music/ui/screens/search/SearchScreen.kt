@@ -72,11 +72,21 @@ fun SearchScreen(services: PlexApp.Services) {
     var error by remember { mutableStateOf<String?>(null) }
     var gen by remember { mutableStateOf(0) }
     var lastCrash by remember { mutableStateOf(CrashLogger.readLatest(context)) }
+    var history by remember { mutableStateOf<List<me.plexs.music.data.api.HistoryItem>>(emptyList()) }
+
+    LaunchedEffect(Unit) {
+        if (services.session.isSignedIn) {
+            services.userData.fetchHistory()?.let { history = it }
+        }
+    }
 
     suspend fun runSearch(q: String) {
         val g = ++gen
         loading = true
         error = null
+        if (services.session.isSignedIn) {
+            services.userData.addHistory(q)?.let { history = it }
+        }
         var outcome: Result<SearchResults> = runCatching { services.catalog.search(q) }
         if (outcome.isFailure && outcome.exceptionOrNull() !is CancellationException) {
             outcome = runCatching { services.catalog.search(q) }
@@ -109,20 +119,12 @@ fun SearchScreen(services: PlexApp.Services) {
             .padding(horizontal = 20.dp),
     ) {
         Spacer(Modifier.height(16.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = "PLEX",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Black,
-                color = PlexAccent,
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                text = "Search",
-                style = MaterialTheme.typography.titleMedium,
-                color = PlexMuted,
-            )
-        }
+        Text(
+            text = "PLEX",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Black,
+            color = PlexAccent,
+        )
         Spacer(Modifier.height(16.dp))
         OutlinedTextField(
             value = query,
@@ -209,6 +211,61 @@ fun SearchScreen(services: PlexApp.Services) {
                     color = PlexMuted,
                     modifier = Modifier.padding(vertical = 16.dp),
                 )
+            }
+            results == null && !searched && history.isNotEmpty() -> {
+                Column(Modifier.fillMaxWidth()) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp, bottom = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Recent searches",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            text = "Clear",
+                            color = PlexMuted,
+                            fontSize = 13.sp,
+                            modifier = Modifier.clickable {
+                                scope.launch {
+                                    services.userData.clearHistory()
+                                    history = emptyList()
+                                }
+                            },
+                        )
+                    }
+                    history.forEach { item ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    query = item.query
+                                    searchJob?.cancel()
+                                    scope.launch { runSearch(item.query) }
+                                }
+                                .padding(vertical = 10.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                Icons.Default.Search,
+                                contentDescription = null,
+                                tint = PlexMuted,
+                                modifier = Modifier.size(20.dp),
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                text = item.query,
+                                color = PlexMuted,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                    }
+                }
             }
             results != null -> {
                 val r = results!!

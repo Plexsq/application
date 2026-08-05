@@ -30,6 +30,12 @@ object Http {
         return client.newCall(b.build()).execute()
     }
 
+    fun delete(url: String, cookie: String? = null): okhttp3.Response {
+        val b = Request.Builder().url(url).delete()
+        if (cookie != null) b.header("Cookie", cookie)
+        return client.newCall(b.build()).execute()
+    }
+
     inline fun <reified T> post(url: String, body: T, cookie: String? = null): okhttp3.Response {
         val b = Request.Builder().url(url)
             .post(json.encodeToString(body).toRequestBody(contentType))

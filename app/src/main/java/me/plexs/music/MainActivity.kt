@@ -9,26 +9,25 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
@@ -66,6 +65,7 @@ class MainActivity : ComponentActivity() {
                 1001,
             )
         }
+        me.plexs.music.playback.PlaybackController.restore(this)
         setContent {
             PlexTheme {
                 val navController = rememberNavController()
@@ -173,15 +173,11 @@ fun PlayerShell(
     content: @Composable () -> Unit,
 ) {
     Scaffold(
+        topBar = {
+            TopBar(currentRoute = currentRoute, onHome = onHome, onSearch = onSearch)
+        },
         bottomBar = {
-            Column {
-                PlayerBar(onTap = onPlayerTap)
-                BottomNav(
-                    currentRoute = currentRoute,
-                    onHome = onHome,
-                    onSearch = onSearch,
-                )
-            }
+            PlayerBar(onTap = onPlayerTap)
         },
     ) { innerPadding ->
         androidx.compose.foundation.layout.Box(
@@ -195,7 +191,7 @@ fun PlayerShell(
 }
 
 @Composable
-fun BottomNav(
+fun TopBar(
     currentRoute: String,
     onHome: () -> Unit,
     onSearch: () -> Unit,
@@ -204,41 +200,26 @@ fun BottomNav(
         modifier = Modifier
             .fillMaxWidth()
             .background(androidx.compose.material3.MaterialTheme.colorScheme.surface)
-            .navigationBarsPadding()
-            .padding(vertical = 6.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
+            .statusBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        NavItem(
-            label = "Home",
-            icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
-            active = currentRoute == Destinations.HOME,
-            onClick = onHome,
+        Text(
+            text = "PLEX",
+            color = PlexAccent,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.Black,
+            fontSize = 24.sp,
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(onClick = onHome),
         )
-        NavItem(
-            label = "Search",
-            icon = { Icon(Icons.Default.Search, contentDescription = "Search") },
-            active = currentRoute == Destinations.SEARCH || currentRoute == Destinations.NOW_PLAYING,
-            onClick = onSearch,
-        )
-    }
-}
-
-@Composable
-fun NavItem(
-    label: String,
-    icon: @Composable () -> Unit,
-    active: Boolean,
-    onClick: () -> Unit,
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 24.dp, vertical = 4.dp),
-    ) {
-        val tint = if (active) androidx.compose.material3.MaterialTheme.colorScheme.primary else PlexMuted
-        Box(contentAlignment = Alignment.Center) { icon() }
+        Spacer(Modifier.weight(1f))
+        IconButton(onClick = onSearch) {
+            Icon(
+                Icons.Default.Search,
+                contentDescription = "Search",
+                tint = if (currentRoute == Destinations.SEARCH) PlexAccent else PlexMuted,
+            )
+        }
     }
 }
