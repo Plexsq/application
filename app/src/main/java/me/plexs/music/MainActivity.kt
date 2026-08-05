@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,6 +46,7 @@ import me.plexs.music.ui.screens.home.HomeScreen
 import me.plexs.music.ui.screens.player.NowPlayingScreen
 import me.plexs.music.ui.screens.search.SearchScreen
 import me.plexs.music.ui.screens.splash.SplashScreen
+import me.plexs.music.ui.theme.PlexAccent
 import me.plexs.music.ui.theme.PlexMuted
 import me.plexs.music.ui.theme.PlexTheme
 

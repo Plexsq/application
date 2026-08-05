@@ -70,7 +70,7 @@ fun HomeScreen(services: PlexApp.Services, vm: AuthViewModel, onSignedOut: () ->
 
         LazyColumn(Modifier.fillMaxWidth()) {
             item {
-                LikedSongsHeader(favorites, context)
+                LikedSongsHeader(favorites)
             }
             if (recent.isNotEmpty()) {
                 item { Spacer(Modifier.height(24.dp)) }

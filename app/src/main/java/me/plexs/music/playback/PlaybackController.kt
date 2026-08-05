@@ -15,6 +15,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import me.plexs.music.MainActivity
 import me.plexs.music.data.api.Song
 
@@ -168,8 +169,8 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
         val cur = _recentlyPlayed.value.toMutableList()
         cur.removeAll { it.id == song.id }
         cur.add(0, song)
-        if (cur.size > 50) cur.removeRange(50, cur.size)
-        _recentlyPlayed.value = cur
+        if (cur.size > 50) _recentlyPlayed.value = cur.subList(0, 50)
+        else _recentlyPlayed.value = cur
         scheduleUserDataSave()
     }
 

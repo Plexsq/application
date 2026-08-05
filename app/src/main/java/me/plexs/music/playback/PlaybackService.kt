@@ -76,12 +76,6 @@ class PlaybackService : Service() {
             .addAction(R.drawable.ic_stat_plex, "Previous", prev)
             .addAction(R.drawable.ic_stat_plex, if (playing) "Pause" else "Play", playPause)
             .addAction(R.drawable.ic_stat_plex, "Next", next)
-            .setStyle(
-                androidx.media.app.NotificationCompat.MediaStyle()
-                    .setShowActionsInCompactView(0, 1, 2)
-            )
-
-        largeIcon = null
         val thumb = song?.thumbnail
         if (thumb != null) {
             val nm = NotificationManagerCompat.from(this)
