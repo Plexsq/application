@@ -6,4 +6,5 @@ object Destinations {
     const val SIGN_UP = "sign_up"
     const val FORGOT = "forgot"
     const val HOME = "home"
+    const val SEARCH = "search"
 }

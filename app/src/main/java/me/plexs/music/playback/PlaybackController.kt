@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import me.plexs.music.MainActivity
+import me.plexs.music.data.api.Song
 
 object PlaybackController {
 
@@ -35,12 +36,58 @@ object PlaybackController {
     private val _hasItem = MutableStateFlow(false)
     val hasItem: StateFlow<Boolean> = _hasItem
 
+    private val _queue = MutableStateFlow<List<Song>>(emptyList())
+    val queue: StateFlow<List<Song>> = _queue
+
+    private val _queueIndex = MutableStateFlow(-1)
+    val queueIndex: StateFlow<Int> = _queueIndex
+
+    @Volatile
+    private var contextRef: android.content.Context? = null
+
+    val currentSong: Song?
+        get() = _queue.value.getOrNull(_queueIndex.value)
+
+    fun playSongs(context: android.content.Context, songs: List<Song>, index: Int) {
+        if (songs.isEmpty()) return
+        contextRef = context.applicationContext
+        _queue.value = songs
+        _queueIndex.value = index
+        playAt(context.applicationContext, index)
+    }
+
+    fun next() {
+        playAt(contextRef, _queueIndex.value + 1)
+    }
+
+    fun previous() {
+        playAt(contextRef, _queueIndex.value - 1)
+    }
+
+    private fun onPlaybackEnded() {
+        playAt(contextRef, _queueIndex.value + 1)
+    }
+
+    private fun playAt(ctx: android.content.Context?, index: Int) {
+        val q = _queue.value
+        val ctx2 = ctx ?: contextRef ?: return
+        if (index < 0 || index >= q.size) return
+        _queueIndex.value = index
+        val song = q[index]
+        val streamUrl = "https://music.plexs.me/api/embed/stream/" + song.id
+        _playing.value = false
+        play(ctx2, streamUrl, song.title, song.artist)
+    }
+
     fun ensureSession(context: Context): MediaSession {
         session?.let { return it }
         val exo = ExoPlayer.Builder(context).build()
         exo.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 _playing.value = isPlaying
+            }
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED) onPlaybackEnded()
             }
         })
         player = exo
@@ -71,6 +118,7 @@ object PlaybackController {
                 MediaMetadata.Builder()
                     .setTitle(title)
                     .setArtist(artist)
+                    .setArtworkUri(currentSong?.thumbnail?.let { android.net.Uri.parse(it) })
                     .build()
             )
             .build()

@@ -4,17 +4,24 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Scaffold
+import androidx.compose.runtime.Composable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import me.plexs.music.ui.auth.AuthViewModel
+import me.plexs.music.ui.components.PlayerBar
 import me.plexs.music.ui.navigation.Destinations
 import me.plexs.music.ui.screens.auth.ForgotScreen
 import me.plexs.music.ui.screens.auth.SignInScreen
 import me.plexs.music.ui.screens.auth.SignUpScreen
 import me.plexs.music.ui.screens.home.HomeScreen
+import me.plexs.music.ui.screens.search.SearchScreen
 import me.plexs.music.ui.screens.splash.SplashScreen
 import me.plexs.music.ui.theme.PlexTheme
 
@@ -41,7 +48,7 @@ class MainActivity : ComponentActivity() {
                     }
                     composable(Destinations.SIGN_IN) {
                         SignInScreen(authVm, services.config, onSignedIn = {
-                            navController.navigate(Destinations.HOME) {
+                            navController.navigate(Destinations.SEARCH) {
                                 popUpTo(Destinations.SPLASH) { inclusive = true }
                             }
                         }, onForgot = {
@@ -52,7 +59,7 @@ class MainActivity : ComponentActivity() {
                     }
                     composable(Destinations.SIGN_UP) {
                         SignUpScreen(authVm) {
-                            navController.navigate(Destinations.HOME) {
+                            navController.navigate(Destinations.SEARCH) {
                                 popUpTo(Destinations.SPLASH) { inclusive = true }
                             }
                         }
@@ -69,6 +76,11 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
+                    composable(Destinations.SEARCH) {
+                        PlayerShell {
+                            SearchScreen(services)
+                        }
+                    }
                 }
             }
         }
@@ -78,4 +90,24 @@ class MainActivity : ComponentActivity() {
 class AuthVmFactory(private val services: PlexApp.Services) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
         AuthViewModel(services.auth, services.session) as T
+}
+
+@Composable
+fun PlayerShell(content: @Composable () -> Unit) {
+    Scaffold(
+        bottomBar = {
+            PlayerBar(
+                onTap = {},
+                modifier = Modifier.navigationBarsPadding(),
+            )
+        },
+    ) { innerPadding ->
+        androidx.compose.foundation.layout.Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding),
+        ) {
+            content()
+        }
+    }
 }

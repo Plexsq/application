@@ -88,6 +88,7 @@ dependencies {
     implementation(libs.media3.session)
     implementation(libs.media3.ui)
     implementation(libs.play.services.auth)
+    implementation(libs.coil.compose)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.leakcanary.android)

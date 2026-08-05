@@ -10,6 +10,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import me.plexs.music.data.api.ConfigRepository
+import me.plexs.music.data.api.CatalogRepository
 import me.plexs.music.data.auth.AuthRepository
 import me.plexs.music.data.bootstrap.BootstrapRepository
 import me.plexs.music.data.session.SessionStore
@@ -30,6 +31,7 @@ class PlexApp : Application() {
         val config = ConfigRepository()
         val auth = AuthRepository(session)
         val bootstrap = BootstrapRepository()
+        val catalog = CatalogRepository(session)
         val notifier = UpgradeNotifier(context)
         private val scope = CoroutineScope(Dispatchers.IO)
 

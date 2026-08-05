@@ -12,6 +12,7 @@ coroutines = "1.9.0"
 securityCrypto = "1.1.0-alpha06"
 media3 = "1.5.1"
 playServicesAuth = "21.2.0"
+coil = "2.7.0"
 leakcanary = "2.14"
 
 [libraries]
@@ -36,6 +37,7 @@ media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", versi
 media3-session = { group = "androidx.media3", name = "media3-session", version.ref = "media3" }
 media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "media3" }
 play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "playServicesAuth" }
+coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 leakcanary-android = { group = "com.squareup.leakcanary", name = "leakcanary-android", version.ref = "leakcanary" }
 
 [plugins]
