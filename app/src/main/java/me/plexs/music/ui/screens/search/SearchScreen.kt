@@ -63,7 +63,7 @@ fun SearchScreen(services: PlexApp.Services) {
     val scope = rememberCoroutineScope()
 
     var query by remember { mutableStateOf("") }
-    var results by remember { mutableStateOf<List<Song>>(emptyList()) }
+    var results by remember { mutableStateOf<SearchResults?>(null) }
     var loading by remember { mutableStateOf(false) }
     var searched by remember { mutableStateOf(false) }
     var searchJob by remember { mutableStateOf<Job?>(null) }
@@ -81,7 +81,7 @@ fun SearchScreen(services: PlexApp.Services) {
         outcome
             .onSuccess {
                 if (g != gen) return@onSuccess
-                results = it.songs
+                results = it
                 searched = true
             }
             .onFailure { e ->
@@ -119,7 +119,7 @@ fun SearchScreen(services: PlexApp.Services) {
                 error = null
                 searchJob?.cancel()
                 if (q.isBlank()) {
-                    results = emptyList()
+                    results = null
                     searched = false
                     return@OutlinedTextField
                 }
@@ -160,24 +160,128 @@ fun SearchScreen(services: PlexApp.Services) {
                     modifier = Modifier.padding(vertical = 16.dp),
                 )
             }
-            results.isEmpty() && searched -> {
+            results == null && searched -> {
                 Text(
-                    text = "No songs found.",
+                    text = "No results found.",
                     color = PlexMuted,
                     modifier = Modifier.padding(vertical = 16.dp),
                 )
             }
-            results.isNotEmpty() -> {
+            results != null -> {
+                val r = results!!
+                val songs = r.songs
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(results, key = { it.id }) { song ->
-                        SongRow(song = song, onPlay = {
-                            PlaybackController.playSongs(context, results, results.indexOf(song))
-                        })
+                    if (r.artists.isNotEmpty()) {
+                        item {
+                            SectionTitle("Artists")
+                        }
+                        items(r.artists) { artist ->
+                            CardRow(
+                                thumbnail = artist.thumbnail,
+                                title = artist.name ?: artist.title ?: "",
+                                subtitle = artist.subscribers?.let { "$it subscribers" },
+                                onClick = {},
+                            )
+                        }
+                    }
+                    if (r.playlists.isNotEmpty()) {
+                        item {
+                            SectionTitle("Playlists")
+                        }
+                        items(r.playlists) { pl ->
+                            CardRow(
+                                thumbnail = pl.thumbnail,
+                                title = pl.title ?: pl.name ?: "",
+                                subtitle = pl.author?.let { "$it · ${pl.itemCount ?: "?"} tracks" },
+                                onClick = {},
+                            )
+                        }
+                    }
+                    if (r.albums.isNotEmpty()) {
+                        item {
+                            SectionTitle("Albums")
+                        }
+                        items(r.albums) { album ->
+                            CardRow(
+                                thumbnail = album.thumbnail,
+                                title = album.title ?: album.name ?: "",
+                                subtitle = album.artist?.let { "$it · ${album.year ?: ""}" },
+                                onClick = {},
+                            )
+                        }
+                    }
+                    if (songs.isNotEmpty()) {
+                        item {
+                            SectionTitle("Songs")
+                        }
+                        items(songs) { song ->
+                            SongRow(song = song, onPlay = {
+                                PlaybackController.playSongs(context, songs, songs.indexOf(song))
+                            })
+                        }
                     }
                 }
             }
         }
         UpdateDialog(services)
+    }
+}
+
+@Composable
+fun SectionTitle(title: String, modifier: Modifier = Modifier) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Bold,
+        modifier = modifier.padding(top = 16.dp, bottom = 4.dp, start = 4.dp),
+    )
+}
+
+@Composable
+fun CardRow(
+    thumbnail: String?,
+    title: String,
+    subtitle: String?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AsyncImage(
+            model = thumbnail,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(48.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(PlexSurfaceVariant),
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (subtitle != null) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = PlexMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
     }
 }
 
