@@ -28,8 +28,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             PlexTheme {
                 val navController = rememberNavController()
-                val authVm = androidx.lifecycle.viewmodel.compose.viewModel(
-                    viewModelClass = AuthViewModel::class,
+                val authVm: AuthViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
                     factory = AuthVmFactory(services),
                 )
                 NavHost(navController, startDestination = Destinations.SPLASH) {
