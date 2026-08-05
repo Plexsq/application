@@ -2,8 +2,7 @@
 
 Android client for [music.plexs.me](https://music.plexs.me).
 
-Kotlin + Jetpack Compose. Streams directly from YouTube, no ads, background
-playback. Sign in with email + OTP or Google.
+made using Kotlin + Jetpack Compose. Streams directly from our api, u may Sign in using email OTP Verification  or Google's OAuth.
 
 ## Build
 
@@ -16,8 +15,8 @@ first launch.
 
 ## Releases
 
-A signed APK is attached to every tag. CI builds and signs it automatically.
+Users gets notified about Latest updates / changes made.
 
 ## License
 
-TBD.
+this app is currently under the TBD License.
