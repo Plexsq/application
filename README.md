@@ -1,29 +1,22 @@
 # Plex
 
-Native Android client for [music.plexs.me](https://music.plexs.me).
+Android client for [music.plexs.me](https://music.plexs.me).
 
-Built in Kotlin with Jetpack Compose. Streams directly from YouTube's own
-streams, no ads, background playback, dark by design.
+Kotlin + Jetpack Compose. Streams directly from YouTube, no ads, background
+playback. Sign in with email + OTP or Google.
 
-## Features
+## Build
 
-- Email / OTP and Google sign-in
-- Full search and catalog browsing
-- Background playback with a foreground media service
-- Update checks on launch
-- Dark theme only, because it is a music app
+Open the project in Android Studio and run, or from the terminal:
 
-## Building
+    ./gradlew assembleRelease
 
-Open the project in Android Studio, or from the terminal:
+No keys are needed at build time. Runtime config is fetched from the API on
+first launch.
 
-```sh
-./gradlew assembleRelease
-```
+## Releases
 
-The app talks to a private API. It needs no keys of its own to build — all
-runtime config is fetched on first launch. A signed APK is published with each
-[release](https://github.com/Plexsq/plex-mobile/releases).
+A signed APK is attached to every tag. CI builds and signs it automatically.
 
 ## License
 
