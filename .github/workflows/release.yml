@@ -1,0 +1,59 @@
+name: build-apk
+
+on:
+  push:
+    tags:
+      - "BETA-*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Write signing config
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_JKS }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > keystore.jks
+          printf 'KEYSTORE_FILE=keystore.jks\nKEYSTORE_PASSWORD=%s\nKEY_ALIAS=%s\nKEY_PASSWORD=%s\n' \
+            "$KEYSTORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" > keystore.properties
+
+      - name: Derive version from tag
+        id: version
+        run: |
+          TAG="${GITHUB_REF_NAME#BETA-}"
+          echo "NAME=${TAG}" >> "$GITHUB_OUTPUT"
+          MAJOR="${TAG%%.*}"
+          MINOR="${TAG#*.}"
+          echo "CODE=$((MAJOR * 100))" >> "$GITHUB_OUTPUT"
+
+      - name: Build release APK
+        env:
+          ORG_GRADLE_PROJECT_versionName: ${{ steps.version.outputs.NAME }}
+          ORG_GRADLE_PROJECT_versionCode: ${{ steps.version.outputs.CODE }}
+        run: ./gradlew assembleRelease
+
+      - name: Attach APK to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk plex-music.apk
+          gh release create "$GITHUB_REF_NAME" \
+            --title "BETA-${GITHUB_REF_NAME#BETA-}" \
+            --notes "**${GITHUB_REF_NAME#BETA-} — ${GITHUB_REF_NAME}.**" \
+            --generate-notes \
+            plex-music.apk

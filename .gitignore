@@ -18,3 +18,5 @@ app/release/
 keystore/
 *.jks
 *.keystore
+keystore.properties
+keystore_pw.txt
