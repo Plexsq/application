@@ -39,7 +39,7 @@ jobs:
           echo "NAME=${TAG}" >> "$GITHUB_OUTPUT"
           MAJOR="${TAG%%.*}"
           MINOR="${TAG#*.}"
-          echo "CODE=$((MAJOR * 100))" >> "$GITHUB_OUTPUT"
+          echo "CODE=$((MAJOR * 100 + MINOR))" >> "$GITHUB_OUTPUT"
 
       - name: Build release APK
         env:
