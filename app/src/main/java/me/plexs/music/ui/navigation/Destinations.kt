@@ -7,4 +7,5 @@ object Destinations {
     const val FORGOT = "forgot"
     const val HOME = "home"
     const val SEARCH = "search"
+    const val NOW_PLAYING = "now_playing"
 }

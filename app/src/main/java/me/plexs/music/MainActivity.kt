@@ -22,6 +22,7 @@ import me.plexs.music.ui.screens.auth.ForgotScreen
 import me.plexs.music.ui.screens.auth.SignInScreen
 import me.plexs.music.ui.screens.auth.SignUpScreen
 import me.plexs.music.ui.screens.home.HomeScreen
+import me.plexs.music.ui.screens.player.NowPlayingScreen
 import me.plexs.music.ui.screens.search.SearchScreen
 import me.plexs.music.ui.screens.splash.SplashScreen
 import me.plexs.music.ui.theme.PlexTheme
@@ -78,8 +79,19 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     composable(Destinations.SEARCH) {
-                        PlayerShell {
+                        PlayerShell(
+                            onPlayerTap = {
+                                navController.navigate(Destinations.NOW_PLAYING)
+                            },
+                        ) {
                             SearchScreen(services)
+                        }
+                    }
+                    composable(Destinations.NOW_PLAYING) {
+                        PlayerShell(
+                            onPlayerTap = { navController.popBackStack() },
+                        ) {
+                            NowPlayingScreen(onClose = { navController.popBackStack() })
                         }
                     }
                 }
@@ -94,11 +106,11 @@ class AuthVmFactory(private val services: PlexApp.Services) : ViewModelProvider.
 }
 
 @Composable
-fun PlayerShell(content: @Composable () -> Unit) {
+fun PlayerShell(onPlayerTap: () -> Unit, content: @Composable () -> Unit) {
     Scaffold(
         bottomBar = {
             PlayerBar(
-                onTap = {},
+                onTap = onPlayerTap,
                 modifier = Modifier.navigationBarsPadding(),
             )
         },

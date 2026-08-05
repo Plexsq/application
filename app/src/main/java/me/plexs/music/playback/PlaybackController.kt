@@ -45,6 +45,12 @@ object PlaybackController {
     @Volatile
     private var contextRef: android.content.Context? = null
 
+    private val _currentTime = MutableStateFlow(0L)
+    val currentTime: StateFlow<Long> = _currentTime
+
+    private val _duration = MutableStateFlow(0L)
+    val duration: StateFlow<Long> = _duration
+
     val currentSong: Song?
         get() = _queue.value.getOrNull(_queueIndex.value)
 
@@ -56,11 +62,21 @@ object PlaybackController {
         playAt(context.applicationContext, index)
     }
 
+    fun playAtIndex(index: Int) {
+        val q = _queue.value
+        if (index < 0 || index >= q.size) return
+        playAt(contextRef, index)
+    }
+
     fun next() {
         playAt(contextRef, _queueIndex.value + 1)
     }
 
     fun previous() {
+        if (_currentTime.value > 3000) {
+            seekTo(0)
+            return
+        }
         playAt(contextRef, _queueIndex.value - 1)
     }
 
@@ -91,6 +107,7 @@ object PlaybackController {
             }
         })
         player = exo
+        widgetUpdaterJob()
 
         val activityIntent = PendingIntent.getActivity(
             context,
@@ -131,6 +148,27 @@ object PlaybackController {
     fun playPause() {
         val exo = player ?: return
         if (exo.isPlaying) exo.pause() else exo.play()
+    }
+
+    fun seekTo(ms: Long) {
+        player?.seekTo(ms)
+    }
+
+    @Volatile
+    private var updater: Job? = null
+
+    private fun widgetUpdaterJob() {
+        if (updater?.isActive == true) return
+        updater = scope.launch {
+            while (true) {
+                val exo = player
+                if (exo != null) {
+                    _currentTime.value = exo.currentPosition
+                    _duration.value = exo.duration
+                }
+                kotlinx.coroutines.delay(500)
+            }
+        }
     }
 
     fun release() {
