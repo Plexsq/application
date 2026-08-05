@@ -18,7 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
@@ -69,7 +69,7 @@ fun NowPlayingScreen(onClose: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onClose) {
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowDown, contentDescription = "Close")
+                Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Close")
             }
             Spacer(Modifier.weight(1f))
             Text("Now Playing", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
