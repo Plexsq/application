@@ -124,7 +124,7 @@ fun HomeScreen(services: PlexApp.Services, vm: AuthViewModel, onSignedOut: () ->
                         )
                     }
                 }
-                Spacer(Modifier.height(24.dp))
+                item { Spacer(Modifier.height(24.dp)) }
                 item {
                     Text(
                         "Liked Songs",

@@ -79,7 +79,7 @@ fun NowPlayingScreen(onClose: () -> Unit) {
     val shuffle by PlaybackController.shuffle.collectAsState()
     val repeat by PlaybackController.repeat.collectAsState()
     val favorites by PlaybackController.favorites.collectAsState()
-    val showQueue by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var showQueue by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     val fav = song?.let { favorites.any { f -> f.id == it.id } } ?: false
 
     AnimatedVisibility(
