@@ -44,10 +44,12 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import me.plexs.music.PlexApp
+import me.plexs.music.data.api.SearchResults
 import me.plexs.music.data.api.Song
 import me.plexs.music.playback.PlaybackController
 import me.plexs.music.ui.theme.PlexAccent
@@ -65,6 +67,29 @@ fun SearchScreen(services: PlexApp.Services) {
     var searched by remember { mutableStateOf(false) }
     var searchJob by remember { mutableStateOf<Job?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    var gen by remember { mutableStateOf(0) }
+
+    suspend fun runSearch(q: String) {
+        val g = ++gen
+        loading = true
+        error = null
+        var outcome: Result<SearchResults> = runCatching { services.catalog.search(q) }
+        if (outcome.isFailure && outcome.exceptionOrNull() !is CancellationException) {
+            outcome = runCatching { services.catalog.search(q) }
+        }
+        outcome
+            .onSuccess {
+                if (g != gen) return@onSuccess
+                results = it.songs
+                searched = true
+            }
+            .onFailure { e ->
+                if (g != gen) return@onFailure
+                if (e is CancellationException) return@onFailure
+                error = if (e.message?.startsWith("Search failed (") == true) e.message else "Search failed. Try again."
+            }
+        if (g == gen) loading = false
+    }
 
     Column(
         modifier = Modifier
@@ -92,15 +117,7 @@ fun SearchScreen(services: PlexApp.Services) {
                 loading = true
                 searchJob = scope.launch {
                     delay(450)
-                    runCatching { services.catalog.search(q) }
-                        .onSuccess {
-                            results = it.songs
-                            searched = true
-                        }
-                        .onFailure {
-                            error = "Search failed. Try again."
-                        }
-                    loading = false
+                    runSearch(q)
                 }
             },
             placeholder = { Text("What do you want to listen to?") },
@@ -109,16 +126,8 @@ fun SearchScreen(services: PlexApp.Services) {
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = {
                 if (query.isBlank()) return@KeyboardActions
-                scope.launch {
-                    loading = true
-                    runCatching { services.catalog.search(query) }
-                        .onSuccess {
-                            results = it.songs
-                            searched = true
-                        }
-                        .onFailure { error = "Search failed. Try again." }
-                    loading = false
-                }
+                searchJob?.cancel()
+                scope.launch { runSearch(query) }
             }),
             shape = RoundedCornerShape(12.dp),
             colors = OutlinedTextFieldDefaults.colors(
