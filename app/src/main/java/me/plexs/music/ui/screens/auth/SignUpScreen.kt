@@ -54,9 +54,9 @@ fun SignUpScreen(vm: AuthViewModel, onSignedUp: () -> Unit) {
             Spacer(Modifier.height(12.dp))
             PlexTextInput(password, { password = it }, "Password", isPassword = true)
             Spacer(Modifier.height(20.dp))
-            PlexButton("Continue", loading = vm.loading) {
+            PlexButton("Continue", loading = vm.loading, onClick = {
                 vm.signUp(name, username, email, password) { step = 2 }
-            }
+            })
         } else {
             Text(
                 "We sent a code to ${vm.pendingEmail ?: email}. Enter it below.",
@@ -65,9 +65,9 @@ fun SignUpScreen(vm: AuthViewModel, onSignedUp: () -> Unit) {
             )
             PlexTextInput(otp, { otp = it }, "Verification code")
             Spacer(Modifier.height(20.dp))
-            PlexButton("Verify", loading = vm.loading) {
+            PlexButton("Verify", loading = vm.loading, onClick = {
                 vm.verifySignup(vm.pendingEmail ?: email, otp) { onSignedUp() }
-            }
+            })
         }
         TextButton(
             onClick = { step = 1 },

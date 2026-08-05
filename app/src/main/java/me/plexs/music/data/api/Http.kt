@@ -16,7 +16,7 @@ object Http {
     const val BOOTSTRAP_URL = "https://music.plexs.me/api/app/bootstrap"
 
     val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
-    private val contentType = "application/json; charset=utf-8".toMediaType()
+    val contentType = "application/json; charset=utf-8".toMediaType()
 
     val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)

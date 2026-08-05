@@ -70,9 +70,9 @@ fun SignInScreen(
         vm.error?.let {
             Text(it, color = PlexError, fontSize = 13.sp, modifier = Modifier.padding(bottom = 8.dp))
         }
-        PlexButton("Sign in", loading = vm.loading) {
+        PlexButton("Sign in", loading = vm.loading, onClick = {
             vm.signIn(email, password) { onSignedIn() }
-        }
+        })
         Spacer(Modifier.height(12.dp))
         if (googleClientId.isNotBlank()) {
             OutlinedButton(

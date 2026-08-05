@@ -47,20 +47,18 @@ fun ForgotScreen(vm: AuthViewModel, onDone: () -> Unit) {
             Text("Enter your email and we'll send a reset code.", fontSize = 14.sp, modifier = Modifier.padding(bottom = 16.dp))
             PlexTextInput(email, { email = it }, "Email")
             Spacer(Modifier.height(20.dp))
-            PlexButton("Send code", loading = vm.loading) {
+            PlexButton("Send code", loading = vm.loading, onClick = {
                 vm.forgot(email) { step = 2 }
-            }
+            })
         } else {
             Text("Enter the code we emailed you, then set a new password.", fontSize = 14.sp, modifier = Modifier.padding(bottom = 16.dp))
             PlexTextInput(otp, { otp = it }, "Verification code")
             Spacer(Modifier.height(12.dp))
             PlexTextInput(newPassword, { newPassword = it }, "New password", isPassword = true)
             Spacer(Modifier.height(20.dp))
-            PlexButton("Reset password", loading = vm.loading) {
-                vm.verifyOtp(vm.pendingEmail ?: email, otp, newPassword) {
-                    onDone()
-                }
-            }
+            PlexButton("Reset password", loading = vm.loading, onClick = {
+                vm.verifyOtp(vm.pendingEmail ?: email, otp, newPassword) { onDone() }
+            })
         }
         TextButton(onClick = { step = 1 }, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("Back") }
     }
