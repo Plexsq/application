@@ -30,7 +30,7 @@ android {
         create("release") {
             val storeFile = prop("KEYSTORE_FILE")
             if (storeFile != null) {
-                this.storeFile = file(storeFile)
+                this.storeFile = rootProject.file(storeFile)
                 storePassword = prop("KEYSTORE_PASSWORD")
                 keyAlias = prop("KEY_ALIAS")
                 keyPassword = prop("KEY_PASSWORD")
