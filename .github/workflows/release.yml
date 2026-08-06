@@ -75,18 +75,24 @@ jobs:
           APK_SHA="$(sha256sum Plex.apk | awk '{print $1}')"
           APK_SIZE="$(stat -c%s Plex.apk)"
           PREV="$(gh release list --limit 2 --json tagName --jq '.[1].tagName // empty' 2>/dev/null || true)"
+          if [ -z "$PREV" ]; then
+            git fetch origin +refs/tags/'BETA-*':refs/tags/'BETA-*' >/dev/null 2>&1 || true
+            PREV="$(git tag -l 'BETA-*' --sort=-v:refname | sed '1d' | head -1 || true)"
+          fi
+          echo "prev_release=$PREV"
           FROM_CODE=0
           FROM_VER=""
           PATCHED=0
           if [ -n "$PREV" ]; then
-            gh release download "$PREV" -p "Plex.apk" -o old.apk 2>/dev/null || true
+            gh release download "$PREV" -p "Plex.apk" -O old.apk || true
+            echo "old.apk_size=$(stat -c%s old.apk 2>/dev/null || echo 0)"
             if [ -s old.apk ]; then
-              sudo apt-get update -qq && sudo apt-get install -y bsdiff
+              sudo apt-get update -qq >/dev/null && sudo apt-get install -y bsdiff >/dev/null
               PT="${PREV#BETA-}"
               FROM_VER="$PT"
               FROM_CODE=$(( ${PT%%.*} * 100 + ${PT#*.} ))
-              bsdiff old.apk Plex.apk Plex.patch
-              PATCHED=1
+              if bsdiff old.apk Plex.apk Plex.patch; then PATCHED=1; else PATCHED=0; fi
+              echo "patch_created=$PATCHED patch_size=$(stat -c%s Plex.patch 2>/dev/null || echo 0)"
             fi
           fi
           PATCH_SHA="NONE"
