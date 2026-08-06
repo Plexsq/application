@@ -1,5 +1,7 @@
 package me.plexs.music.ui.screens.search
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import kotlin.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -465,6 +467,7 @@ fun CardRow(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 fun SongRow(
     song: Song,
     onPlay: () -> Unit,

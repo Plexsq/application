@@ -212,8 +212,8 @@ fun PlayerShell(
     currentRoute: String,
     onSelectCategory: (String) -> Unit,
     onPlayerTap: () -> Unit,
-    content: @Composable () -> Unit,
     showBottomBar: Boolean = true,
+    content: @Composable () -> Unit,
 ) {
     Scaffold(
         topBar = {
