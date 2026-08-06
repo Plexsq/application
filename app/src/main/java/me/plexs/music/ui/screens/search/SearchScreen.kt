@@ -2,6 +2,7 @@ package me.plexs.music.ui.screens.search
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -58,6 +59,7 @@ import me.plexs.music.data.api.Song
 import me.plexs.music.playback.PlaybackController
 import me.plexs.music.ui.components.DownloadIconButton
 import me.plexs.music.ui.components.SongOverflowMenu
+import me.plexs.music.ui.components.SongPlaylistPickerDialog
 import me.plexs.music.ui.components.UpdateDialog
 import me.plexs.music.ui.theme.PlexAccent
 import me.plexs.music.ui.theme.PlexMuted
@@ -83,6 +85,8 @@ fun SearchScreen(services: PlexApp.Services) {
     var downloadedIds by remember { mutableStateOf(offline.list().map { it.song.id }.toSet()) }
     var downloadedPlaylists by remember { mutableStateOf(offline.playLists().map { it.id }.toSet()) }
     var downloading by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var addTarget by remember { mutableStateOf<Song?>(null) }
+    val userPlaylists by services.playlists.version.collectAsState()
 
     LaunchedEffect(offlineVersion) {
         downloadedIds = offline.list().map { it.song.id }.toSet()
@@ -331,6 +335,7 @@ fun SearchScreen(services: PlexApp.Services) {
                                 downloading = song.id in downloading,
                                 onDownload = { scope.launch { downloadSong(song) } },
                                 onDelete = { scope.launch { offline.delete(song.id) } },
+                                onAddToPlaylist = { addTarget = song },
                             )
                         }
                     }
@@ -349,6 +354,7 @@ fun SearchScreen(services: PlexApp.Services) {
                                 downloading = song.id in downloading,
                                 onDownload = { scope.launch { downloadSong(song) } },
                                 onDelete = { scope.launch { offline.delete(song.id) } },
+                                onAddToPlaylist = { addTarget = song },
                             )
                         }
                     }
@@ -370,6 +376,21 @@ fun SearchScreen(services: PlexApp.Services) {
                     }
                 }
             }
+        }
+        addTarget?.let { target ->
+            SongPlaylistPickerDialog(
+                playlists = services.playlists.list(),
+                onPick = { pl ->
+                    services.playlists.addSong(pl.id, target)
+                    addTarget = null
+                },
+                onCreate = { name ->
+                    val pl = services.playlists.create(name)
+                    services.playlists.addSong(pl.id, target)
+                    addTarget = null
+                },
+                onDismiss = { addTarget = null },
+            )
         }
         UpdateDialog(services)
     }
@@ -454,12 +475,17 @@ fun SongRow(
     downloading: Boolean = false,
     onDownload: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
+    onAddToPlaylist: (() -> Unit)? = null,
 ) {
+    var menuOpen by remember { mutableStateOf(false) }
     Row(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
-            .clickable(onClick = onPlay)
+            .combinedClickable(
+                onClick = onPlay,
+                onLongClick = { menuOpen = true },
+            )
             .padding(contentPadding),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -498,12 +524,15 @@ fun SongRow(
             color = PlexMuted,
         )
         Spacer(Modifier.width(8.dp))
-        if (onDownload != null || onDelete != null) {
+        if (onDownload != null || onDelete != null || onAddToPlaylist != null) {
             SongOverflowMenu(
                 downloaded = downloaded,
                 downloading = downloading,
                 onDownload = onDownload ?: {},
                 onDelete = onDelete ?: {},
+                onAddToPlaylist = onAddToPlaylist ?: {},
+                expanded = menuOpen,
+                onExpandedChange = { menuOpen = it },
             )
         } else {
             Icon(

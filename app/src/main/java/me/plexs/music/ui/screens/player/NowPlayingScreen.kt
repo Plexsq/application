@@ -164,22 +164,37 @@ fun NowPlayingScreen(onClose: () -> Unit) {
                 }
 
                 Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp)) {
-                    Text(
-                        text = song?.title ?: "Nothing playing",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = song?.artist ?: "",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = PlexMuted,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                text = song?.title ?: "Nothing playing",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text = song?.artist ?: "",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = PlexMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        IconButton(onClick = { song?.let { PlaybackController.toggleFavorite(it) } }) {
+                            Icon(
+                                if (fav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                contentDescription = "Favorite",
+                                tint = if (fav) PlexAccent else PlexMuted,
+                                modifier = Modifier.size(28.dp),
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(2.dp))
                     Slider(
                         value = if (duration > 0) currentTime.toFloat().coerceIn(0f, duration.toFloat()) else 0f,
                         onValueChange = { PlaybackController.seekTo(it.toLong()) },
@@ -190,8 +205,9 @@ fun NowPlayingScreen(onClose: () -> Unit) {
                             inactiveTrackColor = PlexSurfaceVariant,
                         ),
                     )
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(fmt(currentTime), style = MaterialTheme.typography.labelSmall, color = PlexMuted)
+                        Spacer(Modifier.weight(1f))
                         Text(fmt(duration), style = MaterialTheme.typography.labelSmall, color = PlexMuted)
                     }
                     Spacer(Modifier.height(8.dp))
@@ -247,29 +263,6 @@ fun NowPlayingScreen(onClose: () -> Unit) {
                                 tint = if (repeat > 0) PlexAccent else PlexMuted,
                                 modifier = Modifier.size(28.dp),
                             )
-                        }
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(onClick = { song?.let { PlaybackController.toggleFavorite(it) } }) {
-                                Icon(
-                                    if (fav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                    contentDescription = "Favorite",
-                                    tint = if (fav) PlexAccent else PlexMuted,
-                                )
-                            }
-                            IconButton(onClick = { showQueue = true }) {
-                                Icon(
-                                    Icons.Default.QueueMusic,
-                                    contentDescription = "Queue",
-                                    tint = PlexMuted,
-                                )
-                            }
                         }
                     }
                     Spacer(Modifier.height(8.dp))

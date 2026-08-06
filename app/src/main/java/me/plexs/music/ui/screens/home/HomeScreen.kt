@@ -1,7 +1,10 @@
 package me.plexs.music.ui.screens.home
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -10,20 +13,26 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.PlaylistAdd
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -34,28 +43,37 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 import me.plexs.music.PlexApp
 import me.plexs.music.data.api.Song
+import me.plexs.music.data.playlists.UserPlaylist
 import me.plexs.music.playback.PlaybackController
-import me.plexs.music.ui.auth.AuthViewModel
-import me.plexs.music.ui.screens.search.CardRow
+import me.plexs.music.ui.components.CreatePlaylistDialog
+import me.plexs.music.ui.components.SongPlaylistPickerDialog
+import me.plexs.music.ui.navigation.Destinations
 import me.plexs.music.ui.screens.search.SongRow
 import me.plexs.music.ui.theme.PlexAccent
 import me.plexs.music.ui.theme.PlexMuted
 import me.plexs.music.ui.theme.PlexSurfaceVariant
 
 @Composable
-fun HomeScreen(services: PlexApp.Services, vm: AuthViewModel, onSignedOut: () -> Unit) {
+fun HomeScreen(services: PlexApp.Services, onOpenSection: (String) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val favorites by PlaybackController.favorites.collectAsState()
     val recent by PlaybackController.recentlyPlayed.collectAsState()
+    val playlistsVersion by services.playlists.version.collectAsState()
+    val playlists = remember(playlistsVersion) { services.playlists.list() }
 
     val offline = services.offline
     val offlineVersion by offline.version.collectAsState()
@@ -68,15 +86,88 @@ fun HomeScreen(services: PlexApp.Services, vm: AuthViewModel, onSignedOut: () ->
                 it.song.artist.contains(offlineQuery, true)
         }
         .map { it.song }
-    val offlinePlayLists = remember(offlineVersion) { offline.playLists() }
+
+    var showCreate by remember { mutableStateOf(false) }
+    var deletePl by remember { mutableStateOf<UserPlaylist?>(null) }
+    var addTarget by remember { mutableStateOf<Song?>(null) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxWidth()) {
             item {
-                LikedSongsHeader(favorites)
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "Your Library",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = { showCreate = true }) {
+                        Icon(Icons.Default.Add, contentDescription = null, tint = PlexAccent, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("New Playlist", color = PlexAccent, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
-            if (allOffline.isNotEmpty() || offlinePlayLists.isNotEmpty()) {
-                item { Spacer(Modifier.height(24.dp)) }
+            item {
+                Spacer(Modifier.height(4.dp))
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 24.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    item {
+                        LibraryTile(
+                            thumbnail = recent.firstOrNull()?.thumbnail,
+                            icon = Icons.Default.History,
+                            label = "Recently Played",
+                            sub = "${recent.size} song${if (recent.size != 1) "s" else ""}",
+                            onClick = { onOpenSection(Destinations.RECENTS) },
+                        )
+                    }
+                    item {
+                        LibraryTile(
+                            thumbnail = favorites.firstOrNull()?.thumbnail,
+                            icon = Icons.Default.Favorite,
+                            label = "Liked Songs",
+                            sub = "${favorites.size} song${if (favorites.size != 1) "s" else ""}",
+                            onClick = { onOpenSection(Destinations.LIKED) },
+                        )
+                    }
+                    item {
+                        LibraryTile(
+                            thumbnail = null,
+                            icon = Icons.Default.Download,
+                            label = "Offline",
+                            sub = "${allOffline.size} song${if (allOffline.size != 1) "s" else ""}",
+                            onClick = { },
+                            accent = false,
+                        )
+                    }
+                    items(playlists) { pl ->
+                        LibraryTile(
+                            thumbnail = pl.songs.firstOrNull()?.thumbnail ?: "",
+                            icon = if (pl.songs.isEmpty()) Icons.Default.PlaylistAdd else null,
+                            label = pl.name,
+                            sub = "${pl.songs.size} song${if (pl.songs.size != 1) "s" else ""}",
+                            onClick = {
+                                if (pl.songs.isNotEmpty()) {
+                                    PlaybackController.playSongs(context, pl.songs, 0)
+                                }
+                            },
+                            onLongClick = { deletePl = pl },
+                        )
+                    }
+                    item {
+                        NewPlaylistTile(onClick = { showCreate = true })
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+            if (allOffline.isNotEmpty()) {
                 item {
                     Column(Modifier.padding(horizontal = 24.dp)) {
                         Text(
@@ -92,31 +183,26 @@ fun HomeScreen(services: PlexApp.Services, vm: AuthViewModel, onSignedOut: () ->
                         )
                     }
                 }
-                if (allOffline.isNotEmpty()) {
-                    item {
-                        Spacer(Modifier.height(8.dp))
-                        OutlinedTextField(
-                            value = offlineQuery,
-                            onValueChange = { offlineQuery = it },
-                            placeholder = { Text("Search offline") },
-                            leadingIcon = {
-                                Icon(
-                                    Icons.Default.Search,
-                                    contentDescription = null,
-                                )
-                            },
-                            singleLine = true,
-                            shape = RoundedCornerShape(10.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = PlexAccent,
-                                unfocusedBorderColor = PlexSurfaceVariant,
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 24.dp),
-                        )
-                        Spacer(Modifier.height(4.dp))
-                    }
+                item {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = offlineQuery,
+                        onValueChange = { offlineQuery = it },
+                        placeholder = { Text("Search offline") },
+                        leadingIcon = {
+                            Icon(Icons.Default.History, contentDescription = null)
+                        },
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = PlexAccent,
+                            unfocusedBorderColor = PlexSurfaceVariant,
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp),
+                    )
+                    Spacer(Modifier.height(4.dp))
                 }
                 if (offlineSongs.isNotEmpty()) {
                     itemsIndexed(offlineSongs) { i, song ->
@@ -127,123 +213,131 @@ fun HomeScreen(services: PlexApp.Services, vm: AuthViewModel, onSignedOut: () ->
                             },
                             contentPadding = PaddingValues(horizontal = 24.dp, vertical = 6.dp),
                             downloaded = true,
+                            onDownload = {},
                             onDelete = { scope.launch { offline.delete(song.id) } },
+                            onAddToPlaylist = { addTarget = song },
                         )
                     }
                 }
             }
-            if (offlinePlayLists.isNotEmpty()) {
-                item {
-                    Spacer(Modifier.height(20.dp))
-                    Text(
-                        "Downloaded Playlists",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 24.dp),
-                    )
-                    Spacer(Modifier.height(4.dp))
+        }
+    }
+
+    if (showCreate) {
+        CreatePlaylistDialog(
+            onCreate = { services.playlists.create(it); showCreate = false },
+            onDismiss = { showCreate = false },
+        )
+    }
+    deletePl?.let { pl ->
+        AlertDialog(
+            onDismissRequest = { deletePl = null },
+            title = { Text("Delete playlist") },
+            text = { Text("Remove \"${pl.name}\"?") },
+            confirmButton = {
+                TextButton(onClick = { services.playlists.delete(pl.id); deletePl = null }) {
+                    Text("Delete", color = PlexAccent)
                 }
-                items(offlinePlayLists) { pl ->
-                    val plSongs = allOffline.filter { it.song.id in pl.songIds }.map { it.song }
-                    CardRow(
-                        thumbnail = plSongs.firstOrNull()?.thumbnail,
-                        title = pl.title,
-                        subtitle = "${pl.songIds.size} track${if (pl.songIds.size != 1) "s" else ""}",
-                        onClick = {
-                            if (plSongs.isNotEmpty()) PlaybackController.playSongs(context, plSongs, 0)
-                        },
-                    )
-                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deletePl = null }) { Text("Cancel") }
+            },
+        )
+    }
+    addTarget?.let { target ->
+        SongPlaylistPickerDialog(
+            playlists = services.playlists.list(),
+            onPick = { pl ->
+                services.playlists.addSong(pl.id, target)
+                addTarget = null
+            },
+            onCreate = { name ->
+                val pl = services.playlists.create(name)
+                services.playlists.addSong(pl.id, target)
+                addTarget = null
+            },
+            onDismiss = { addTarget = null },
+        )
+    }
+}
+
+@Composable
+private fun LibraryTile(
+    thumbnail: String?,
+    icon: ImageVector?,
+    label: String,
+    sub: String,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
+    accent: Boolean = true,
+) {
+    val gradient = Brush.linearGradient(
+        if (accent) listOf(PlexAccent, Color(0xFF60A5FA)) else listOf(PlexSurfaceVariant, PlexSurfaceVariant),
+    )
+    Row(
+        modifier = Modifier
+            .width(120.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(58.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(gradient),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (thumbnail?.isNotBlank() == true) {
+                AsyncImage(
+                    model = thumbnail,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(58.dp),
+                )
+            } else {
+                Icon(
+                    icon ?: Icons.Default.PlaylistAdd,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(30.dp),
+                )
             }
-            if (recent.isNotEmpty()) {
-                item { Spacer(Modifier.height(24.dp)) }
-                item {
-                    Text(
-                        "Recently Played",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 24.dp),
-                    )
-                    Spacer(Modifier.height(8.dp))
-                }
-                itemsIndexed(recent) { i, song ->
-                    SongRow(
-                        song = song,
-                        onPlay = {
-                            PlaybackController.playSongs(context, recent, i)
-                        },
-                        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 6.dp),
-                        downloaded = song.id in allOffline.map { it.song.id },
-                        onDelete = { scope.launch { offline.delete(song.id) } },
-                    )
-                }
-            }
-            if (favorites.isNotEmpty()) {
-                item { Spacer(Modifier.height(24.dp)) }
-                item {
-                    Text(
-                        "Liked Songs",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 24.dp),
-                    )
-                    Spacer(Modifier.height(8.dp))
-                }
-                itemsIndexed(favorites) { i, song ->
-                    SongRow(
-                        song = song,
-                        onPlay = {
-                            PlaybackController.playSongs(context, favorites, i)
-                        },
-                        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 6.dp),
-                        downloaded = song.id in allOffline.map { it.song.id },
-                        onDelete = { scope.launch { offline.delete(song.id) } },
-                    )
-                }
-            }
+        }
+        Spacer(Modifier.width(12.dp))
+        Column {
+            Text(
+                label,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(sub, color = PlexMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
 
 @Composable
-private fun LikedSongsHeader(favorites: List<Song>, onPlay: (() -> Unit)? = null) {
-    val context = LocalContext.current
-    val playBlock = onPlay ?: { PlaybackController.playSongs(context, favorites, 0) }
-    Row(
+private fun NewPlaylistTile(onClick: () -> Unit) {
+    Box(
         Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 24.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(PlexAccent)
-            .clickable { playBlock() }
-            .padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .width(120.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .border(1.dp, PlexSurfaceVariant, RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(12.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            Icons.Default.Favorite,
-            contentDescription = "Liked",
-            tint = Color.White,
-            modifier = Modifier.width(28.dp),
-        )
-        Spacer(Modifier.width(14.dp))
-        androidx.compose.foundation.layout.Column(Modifier.weight(1f)) {
-            Text(
-                "Liked Songs",
-                color = Color.White,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.Bold,
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                Icons.Default.Add,
+                contentDescription = "New playlist",
+                tint = PlexMuted,
+                modifier = Modifier.size(28.dp),
             )
-            Text(
-                "${favorites.size} song${if (favorites.size != 1) "s" else ""}",
-                color = Color.White.copy(alpha = 0.75f),
-                fontSize = 13.sp,
-            )
+            Spacer(Modifier.height(4.dp))
+            Text("New Playlist", color = PlexMuted, fontSize = 12.sp)
         }
-        Icon(
-            Icons.Default.PlayArrow,
-            contentDescription = "Play",
-            tint = Color.White,
-        )
     }
-    if (favorites.isEmpty()) Spacer(Modifier.height(12.dp))
 }

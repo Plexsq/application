@@ -12,21 +12,49 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import me.plexs.music.PlexApp
+import me.plexs.music.data.api.Song
 import me.plexs.music.playback.PlaybackController
+import me.plexs.music.ui.components.SongPlaylistPickerDialog
 import me.plexs.music.ui.screens.search.SongRow
 import me.plexs.music.ui.theme.PlexMuted
 
 @Composable
 fun RecentsScreen(services: PlexApp.Services) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val recent by PlaybackController.recentlyPlayed.collectAsState()
+
+    val offline = services.offline
+    val offlineVersion by offline.version.collectAsState()
+    var downloadedIds by remember { mutableStateOf(offline.list().map { it.song.id }.toSet()) }
+    var downloading by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var addTarget by remember { mutableStateOf<Song?>(null) }
+
+    LaunchedEffect(offlineVersion) {
+        downloadedIds = offline.list().map { it.song.id }.toSet()
+    }
+
+    fun downloadSong(song: Song) {
+        if (song.id in downloading) return
+        downloading = downloading + song.id
+        scope.launch {
+            runCatching { offline.download(song) }
+            downloading = downloading - song.id
+        }
+    }
 
     Column(Modifier.fillMaxSize()) {
         Text(
@@ -48,9 +76,30 @@ fun RecentsScreen(services: PlexApp.Services) {
                     song = song,
                     onPlay = { PlaybackController.playSongs(context, recent, i) },
                     contentPadding = PaddingValues(horizontal = 24.dp, vertical = 6.dp),
+                    downloaded = song.id in downloadedIds,
+                    downloading = song.id in downloading,
+                    onDownload = { downloadSong(song) },
+                    onDelete = { scope.launch { offline.delete(song.id) } },
+                    onAddToPlaylist = { addTarget = song },
                 )
             }
             item { Spacer(Modifier.height(24.dp)) }
         }
+    }
+
+    addTarget?.let { target ->
+        SongPlaylistPickerDialog(
+            playlists = services.playlists.list(),
+            onPick = { pl ->
+                services.playlists.addSong(pl.id, target)
+                addTarget = null
+            },
+            onCreate = { name ->
+                val pl = services.playlists.create(name)
+                services.playlists.addSong(pl.id, target)
+                addTarget = null
+            },
+            onDismiss = { addTarget = null },
+        )
     }
 }

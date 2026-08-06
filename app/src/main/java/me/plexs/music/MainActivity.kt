@@ -127,11 +127,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                         ) {
-                            HomeScreen(services, authVm) {
-                                navController.navigate(Destinations.SIGN_IN) {
-                                    popUpTo(Destinations.SPLASH) { inclusive = true }
-                                }
-                            }
+                            HomeScreen(services, onOpenSection = goCategory)
                         }
                     }
                     composable(Destinations.SEARCH) {
@@ -195,6 +191,7 @@ class MainActivity : ComponentActivity() {
                             currentRoute = Destinations.SEARCH,
                             onSelectCategory = goCategory,
                             onPlayerTap = { navController.popBackStack() },
+                            showBottomBar = false,
                         ) {
                             NowPlayingScreen(onClose = { navController.popBackStack() })
                         }
@@ -216,13 +213,16 @@ fun PlayerShell(
     onSelectCategory: (String) -> Unit,
     onPlayerTap: () -> Unit,
     content: @Composable () -> Unit,
+    showBottomBar: Boolean = true,
 ) {
     Scaffold(
         topBar = {
             CategoryBar(currentRoute = currentRoute, onSelect = onSelectCategory)
         },
         bottomBar = {
-            PlayerBar(onTap = onPlayerTap)
+            if (showBottomBar) {
+                PlayerBar(onTap = onPlayerTap)
+            }
         },
     ) { innerPadding ->
         androidx.compose.foundation.layout.Box(
@@ -253,8 +253,7 @@ fun CategoryBar(
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surface)
             .statusBarsPadding()
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceEvenly,
+            .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CategoryTabs.forEach { (route, label) ->
@@ -269,10 +268,12 @@ fun CategoryBar(
             }
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
                 modifier = Modifier
+                    .weight(1f)
                     .clip(RoundedCornerShape(12.dp))
                     .clickable(onClick = { onSelect(route) })
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                    .padding(vertical = 4.dp),
             ) {
                 Icon(icon, contentDescription = label, tint = if (active) PlexAccent else PlexMuted)
                 Text(
@@ -280,6 +281,9 @@ fun CategoryBar(
                     color = if (active) PlexAccent else PlexMuted,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
             }
         }
