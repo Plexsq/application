@@ -40,6 +40,9 @@ class AuthRepository(private val store: SessionStore) {
     suspend fun google(idToken: String): AuthResponse =
         post("$base/api/auth/google", GoogleSignInRequest(idToken))
 
+    suspend fun qrSwap(token: String): AuthResponse =
+        post("$base/api/qr/swap", QrSwapRequest(token))
+
     suspend fun signOut() {
         withContext(Dispatchers.IO) {
             runCatching { Http.post("$base/api/auth/sign-out", mapOf("ok" to true), store.cookie()).close() }

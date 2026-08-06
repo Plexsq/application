@@ -52,8 +52,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cp app/build/outputs/apk/release/app-release.apk Plex.apk
+          TAG="${GITHUB_REF_NAME#BETA-}"
+          TITLE="Beta-${TAG}"
+          echo "**${TITLE} — mobile release.**" > NOTES.md
+          PREV="$(git tag --sort=-v:refname | head -1)^"
+          { git log "${PREV}..HEAD" --pretty="format:- %s" 2>/dev/null || git log --pretty="- %s" -10; } >> NOTES.md
           gh release create "$GITHUB_REF_NAME" \
-            --title "BETA-${GITHUB_REF_NAME#BETA-}" \
-            --notes "**${GITHUB_REF_NAME#BETA-} — ${GITHUB_REF_NAME}.**" \
-            --generate-notes \
+            --title "$TITLE" \
+            --notes-file NOTES.md \
             Plex.apk

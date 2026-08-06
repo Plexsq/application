@@ -70,6 +70,9 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
     @Volatile
     private var contextRef: android.content.Context? = null
 
+    @Volatile
+    private var offlineRepo: me.plexs.music.data.offline.OfflineRepository? = null
+
     private val _currentTime = MutableStateFlow(0L)
     val currentTime: StateFlow<Long> = _currentTime
 
@@ -105,6 +108,7 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
 
     fun toggleShuffle() {
         _shuffle.value = !_shuffle.value
+        notifCallback?.invoke()
     }
 
     fun cycleRepeat() {
@@ -114,6 +118,7 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
             1 -> Player.REPEAT_MODE_ALL
             else -> Player.REPEAT_MODE_ONE
         }
+        notifCallback?.invoke()
     }
 
     fun isFavorited(id: String): Boolean = _favorites.value.any { it.id == id }
@@ -160,9 +165,18 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
         _queueIndex.value = index
         val song = q[index]
         recordRecentlyPlayed(song)
-        val streamUrl = "https://music.plexs.me/api/embed/stream/" + song.id
+        val url = resolveStreamUrl(song.id)
         _playing.value = false
-        play(ctx2, streamUrl, song.title, song.artist)
+        play(ctx2, url, song.title, song.artist)
+    }
+
+    private fun resolveStreamUrl(id: String): String {
+        val offline = offlineRepo
+        if (offline != null && offline.isDownloaded(id)) {
+            val f = java.io.File(offline.offlineDir(), id + ".m4a")
+            if (f.exists()) return f.toURI().toString()
+        }
+        return "https://music.plexs.me/api/embed/stream/" + id
     }
 
     private fun recordRecentlyPlayed(song: Song) {
@@ -244,6 +258,10 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
     @Volatile
     private var updater: Job? = null
 
+    private val countedPlays = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val autoDownloading = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private const val MIN_LISTEN_MS = 30000L
+
     private fun widgetUpdaterJob() {
         if (updater?.isActive == true) return
         updater = scope.launch {
@@ -252,9 +270,28 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
                 if (exo != null) {
                     _currentTime.value = exo.currentPosition
                     _duration.value = exo.duration
+                    if (exo.isPlaying && exo.currentPosition >= MIN_LISTEN_MS) {
+                        val song = currentSong
+                        val id = song?.id
+                        if (id != null && countedPlays.add(id)) {
+                            offlineRepo?.recordPlay(id)
+                            maybeAutoDownload(song)
+                        }
+                    }
                 }
                 kotlinx.coroutines.delay(500)
             }
+        }
+    }
+
+    private fun maybeAutoDownload(song: Song) {
+        val offline = offlineRepo ?: return
+        val id = song.id
+        if (offline.isDownloaded(id)) return
+        if (offline.playCount(id) < 3) return
+        if (!autoDownloading.add(id)) return
+        scope.launch(Dispatchers.IO) {
+            offline.download(song)
         }
     }
 
@@ -270,6 +307,7 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
     }
 
     fun restore(context: Context) {
+        offlineRepo = (context.applicationContext as me.plexs.music.PlexApp).services.offline
         val s = me.plexs.music.data.session.SessionStore(context)
         if (!s.isSignedIn) return
         repo = me.plexs.music.data.api.UserDataRepository(s)

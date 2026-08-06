@@ -27,6 +27,8 @@ class PlaybackService : Service() {
             ACTION_PLAY_PAUSE -> PlaybackController.playPause()
             ACTION_NEXT -> PlaybackController.next()
             ACTION_PREV -> PlaybackController.previous()
+            ACTION_SHUFFLE -> PlaybackController.toggleShuffle()
+            ACTION_REPEAT -> PlaybackController.cycleRepeat()
             ACTION_STOP -> {
                 PlaybackController.pause()
                 stopForeground(STOP_FOREGROUND_REMOVE)
@@ -41,6 +43,8 @@ class PlaybackService : Service() {
     private fun buildNotification(): Notification {
         val song = PlaybackController.currentSong
         val playing = PlaybackController.playing.value
+        val shuffleOn = PlaybackController.shuffle.value
+        val repeatOn = PlaybackController.repeat.value > 0
 
         val contentIntent = PendingIntent.getActivity(
             this, 0,
@@ -62,6 +66,16 @@ class PlaybackService : Service() {
             Intent(this, PlaybackService::class.java).setAction(ACTION_PREV),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+        val shuffle = PendingIntent.getService(
+            this, 4,
+            Intent(this, PlaybackService::class.java).setAction(ACTION_SHUFFLE),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val repeat = PendingIntent.getService(
+            this, 5,
+            Intent(this, PlaybackService::class.java).setAction(ACTION_REPEAT),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_plex)
@@ -73,9 +87,11 @@ class PlaybackService : Service() {
             .setOnlyAlertOnce(true)
             .setShowWhen(false)
             .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
+            .addAction(R.drawable.ic_shuffle, if (shuffleOn) "Shuffle on" else "Shuffle", shuffle)
             .addAction(R.drawable.ic_stat_plex, "Previous", prev)
             .addAction(R.drawable.ic_stat_plex, if (playing) "Pause" else "Play", playPause)
             .addAction(R.drawable.ic_stat_plex, "Next", next)
+            .addAction(R.drawable.ic_repeat, if (repeatOn) "Repeat on" else "Repeat", repeat)
         val thumb = song?.thumbnail
         if (thumb != null) {
             val nm = NotificationManagerCompat.from(this)
@@ -148,6 +164,8 @@ class PlaybackService : Service() {
         const val ACTION_PLAY_PAUSE = "me.plexs.music.ACTION_PLAY_PAUSE"
         const val ACTION_NEXT = "me.plexs.music.ACTION_NEXT"
         const val ACTION_PREV = "me.plexs.music.ACTION_PREV"
+        const val ACTION_SHUFFLE = "me.plexs.music.ACTION_SHUFFLE"
+        const val ACTION_REPEAT = "me.plexs.music.ACTION_REPEAT"
         const val ACTION_STOP = "me.plexs.music.ACTION_STOP"
     }
 }

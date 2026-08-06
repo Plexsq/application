@@ -74,6 +74,11 @@ class AuthViewModel(
         res.user?.let(onSuccess) ?: throw ApiException("Google sign-in failed")
     }
 
+    fun qrScan(token: String, onSuccess: (User) -> Unit) = run {
+        val res = auth.qrSwap(token)
+        res.user?.let(onSuccess) ?: throw ApiException("Link failed. Scan again.")
+    }
+
     fun signOut(onDone: () -> Unit) = run {
         auth.signOut()
         onDone()

@@ -30,6 +30,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,6 +56,8 @@ import me.plexs.music.PlexApp
 import me.plexs.music.data.api.SearchResults
 import me.plexs.music.data.api.Song
 import me.plexs.music.playback.PlaybackController
+import me.plexs.music.ui.components.DownloadIconButton
+import me.plexs.music.ui.components.SongOverflowMenu
 import me.plexs.music.ui.components.UpdateDialog
 import me.plexs.music.ui.theme.PlexAccent
 import me.plexs.music.ui.theme.PlexMuted
@@ -74,6 +77,35 @@ fun SearchScreen(services: PlexApp.Services) {
     var gen by remember { mutableStateOf(0) }
     var lastCrash by remember { mutableStateOf(CrashLogger.readLatest(context)) }
     var history by remember { mutableStateOf<List<me.plexs.music.data.api.HistoryItem>>(emptyList()) }
+
+    val offline = services.offline
+    val offlineVersion by offline.version.collectAsState()
+    var downloadedIds by remember { mutableStateOf(offline.list().map { it.song.id }.toSet()) }
+    var downloadedPlaylists by remember { mutableStateOf(offline.playLists().map { it.id }.toSet()) }
+    var downloading by remember { mutableStateOf<Set<String>>(emptySet()) }
+
+    LaunchedEffect(offlineVersion) {
+        downloadedIds = offline.list().map { it.song.id }.toSet()
+        downloadedPlaylists = offline.playLists().map { it.id }.toSet()
+    }
+
+    suspend fun downloadSong(song: Song) {
+        if (song.id in downloading) return
+        downloading = downloading + song.id
+        offline.download(song)
+        downloading = downloading - song.id
+    }
+
+    suspend fun downloadPlaylist(pl: me.plexs.music.data.api.SearchCard) {
+        if (pl.id in downloading) return
+        downloading = downloading + pl.id
+        runCatching {
+            val page = services.catalog.playlist(pl.id)
+            val title = page.title.ifBlank { pl.title ?: pl.name ?: pl.id }
+            offline.downloadPlayList(pl.id, title, page.items)
+        }
+        downloading = downloading - pl.id
+    }
 
     LaunchedEffect(Unit) {
         if (services.session.isSignedIn) {
@@ -290,9 +322,16 @@ fun SearchScreen(services: PlexApp.Services) {
                             SectionTitle("Songs")
                         }
                         itemsIndexed(songs) { i, song ->
-                            SongRow(song = song, onPlay = {
-                                PlaybackController.playSongs(context, songs, i)
-                            })
+                            SongRow(
+                                song = song,
+                                onPlay = {
+                                    PlaybackController.playSongs(context, songs, i)
+                                },
+                                downloaded = song.id in downloadedIds,
+                                downloading = song.id in downloading,
+                                onDownload = { scope.launch { downloadSong(song) } },
+                                onDelete = { scope.launch { offline.delete(song.id) } },
+                            )
                         }
                     }
                     if (r.videos.isNotEmpty()) {
@@ -300,10 +339,17 @@ fun SearchScreen(services: PlexApp.Services) {
                             SectionTitle("Related")
                         }
                         itemsIndexed(r.videos) { i, song ->
-                            SongRow(song = song, onPlay = {
-                                val all = songs + r.videos
-                                PlaybackController.playSongs(context, all, songs.size + i)
-                            })
+                            SongRow(
+                                song = song,
+                                onPlay = {
+                                    val all = songs + r.videos
+                                    PlaybackController.playSongs(context, all, songs.size + i)
+                                },
+                                downloaded = song.id in downloadedIds,
+                                downloading = song.id in downloading,
+                                onDownload = { scope.launch { downloadSong(song) } },
+                                onDelete = { scope.launch { offline.delete(song.id) } },
+                            )
                         }
                     }
                     if (r.playlists.isNotEmpty()) {
@@ -316,6 +362,9 @@ fun SearchScreen(services: PlexApp.Services) {
                                 title = pl.title ?: pl.name ?: "",
                                 subtitle = pl.author?.let { "$it · ${pl.itemCount ?: "?"} tracks" },
                                 onClick = {},
+                                downloaded = pl.id in downloadedPlaylists,
+                                downloading = pl.id in downloading,
+                                onDownload = { scope.launch { downloadPlaylist(pl) } },
                             )
                         }
                     }
@@ -343,13 +392,16 @@ fun CardRow(
     subtitle: String?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    downloaded: Boolean = false,
+    downloading: Boolean = false,
+    onDownload: (() -> Unit)? = null,
 ) {
     Row(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 8.dp),
+            .padding(start = 8.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         AsyncImage(
@@ -381,17 +433,34 @@ fun CardRow(
                 )
             }
         }
+        if (onDownload != null) {
+            DownloadIconButton(
+                downloaded = downloaded,
+                downloading = downloading,
+                onDownload = onDownload,
+            )
+        }
     }
 }
 
 @Composable
-fun SongRow(song: Song, onPlay: () -> Unit, modifier: Modifier = Modifier) {
+fun SongRow(
+    song: Song,
+    onPlay: () -> Unit,
+    modifier: Modifier = Modifier,
+    contentPadding: androidx.compose.foundation.layout.PaddingValues =
+        androidx.compose.foundation.layout.PaddingValues(start = 8.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
+    downloaded: Boolean = false,
+    downloading: Boolean = false,
+    onDownload: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null,
+) {
     Row(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
             .clickable(onClick = onPlay)
-            .padding(horizontal = 8.dp, vertical = 8.dp),
+            .padding(contentPadding),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box {
@@ -429,10 +498,19 @@ fun SongRow(song: Song, onPlay: () -> Unit, modifier: Modifier = Modifier) {
             color = PlexMuted,
         )
         Spacer(Modifier.width(8.dp))
-        Icon(
-            Icons.Default.PlayArrow,
-            contentDescription = "Play",
-            tint = PlexMuted,
-        )
+        if (onDownload != null || onDelete != null) {
+            SongOverflowMenu(
+                downloaded = downloaded,
+                downloading = downloading,
+                onDownload = onDownload ?: {},
+                onDelete = onDelete ?: {},
+            )
+        } else {
+            Icon(
+                Icons.Default.PlayArrow,
+                contentDescription = "Play",
+                tint = PlexMuted,
+            )
+        }
     }
 }

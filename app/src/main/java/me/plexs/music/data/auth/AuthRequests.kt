@@ -24,3 +24,6 @@ data class VerifyOtpRequest(val email: String, val otp: String, val newPassword:
 
 @Serializable
 data class GoogleSignInRequest(val idToken: String)
+
+@Serializable
+data class QrSwapRequest(val token: String)

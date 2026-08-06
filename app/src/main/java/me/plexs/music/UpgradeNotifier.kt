@@ -27,7 +27,7 @@ class UpgradeNotifier(context: Context) {
         val openUrl = PendingIntent.getActivity(
             appContext,
             0,
-            Intent(Intent.ACTION_VIEW, Uri.parse(apkUrl.ifBlank { "https://github.com/Plexsq/plex-app/releases/latest" })),
+            Intent(Intent.ACTION_VIEW, Uri.parse(apkUrl.ifBlank { "https://github.com/Plexsq/application/releases/latest" })),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val notification = NotificationCompat.Builder(appContext, channelId)
