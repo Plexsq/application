@@ -17,9 +17,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -46,6 +51,9 @@ import me.plexs.music.ui.screens.home.HomeScreen
 import me.plexs.music.ui.screens.player.NowPlayingScreen
 import me.plexs.music.ui.screens.search.SearchScreen
 import me.plexs.music.ui.screens.splash.SplashScreen
+import me.plexs.music.ui.screens.liked.LikedScreen
+import me.plexs.music.ui.screens.recents.RecentsScreen
+import me.plexs.music.ui.screens.settings.SettingsScreen
 import me.plexs.music.ui.theme.PlexAccent
 import me.plexs.music.ui.theme.PlexMuted
 import me.plexs.music.ui.theme.PlexTheme
@@ -74,6 +82,9 @@ class MainActivity : ComponentActivity() {
                 val authVm: AuthViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
                     factory = AuthVmFactory(services),
                 )
+                val goCategory: (String) -> Unit = { dest ->
+                    navController.navigate(dest) { launchSingleTop = true }
+                }
                 NavHost(navController, startDestination = Destinations.SPLASH) {
                     composable(Destinations.SPLASH) {
                         SplashScreen(services.session) { dest ->
@@ -84,7 +95,7 @@ class MainActivity : ComponentActivity() {
                     }
                     composable(Destinations.SIGN_IN) {
                         SignInScreen(authVm, services.config, onSignedIn = {
-                            navController.navigate(Destinations.SEARCH) {
+                            navController.navigate(Destinations.HOME) {
                                 popUpTo(Destinations.SPLASH) { inclusive = true }
                             }
                         }, onForgot = {
@@ -95,7 +106,7 @@ class MainActivity : ComponentActivity() {
                     }
                     composable(Destinations.SIGN_UP) {
                         SignUpScreen(authVm) {
-                            navController.navigate(Destinations.SEARCH) {
+                            navController.navigate(Destinations.HOME) {
                                 popUpTo(Destinations.SPLASH) { inclusive = true }
                             }
                         }
@@ -107,16 +118,13 @@ class MainActivity : ComponentActivity() {
                     }
                     composable(Destinations.HOME) {
                         PlayerShell(
+                            currentRoute = Destinations.HOME,
+                            onSelectCategory = goCategory,
                             onPlayerTap = {
-                                navController.navigate(Destinations.NOW_PLAYING)
-                            },
-                            onHome = { /* already home */ },
-                            onSearch = {
-                                navController.navigate(Destinations.SEARCH) {
-                                    popUpTo(Destinations.HOME) { inclusive = true }
+                                navController.navigate(Destinations.NOW_PLAYING) {
+                                    launchSingleTop = true
                                 }
                             },
-                            currentRoute = Destinations.HOME,
                         ) {
                             HomeScreen(services, authVm) {
                                 navController.navigate(Destinations.SIGN_IN) {
@@ -127,30 +135,65 @@ class MainActivity : ComponentActivity() {
                     }
                     composable(Destinations.SEARCH) {
                         PlayerShell(
+                            currentRoute = Destinations.SEARCH,
+                            onSelectCategory = goCategory,
                             onPlayerTap = {
-                                navController.navigate(Destinations.NOW_PLAYING)
-                            },
-                            onHome = {
-                                navController.navigate(Destinations.HOME) {
-                                    popUpTo(Destinations.SEARCH) { inclusive = true }
+                                navController.navigate(Destinations.NOW_PLAYING) {
+                                    launchSingleTop = true
                                 }
                             },
-                            onSearch = { /* already search */ },
-                            currentRoute = Destinations.SEARCH,
                         ) {
                             SearchScreen(services)
                         }
                     }
+                    composable(Destinations.LIKED) {
+                        PlayerShell(
+                            currentRoute = Destinations.LIKED,
+                            onSelectCategory = goCategory,
+                            onPlayerTap = {
+                                navController.navigate(Destinations.NOW_PLAYING) {
+                                    launchSingleTop = true
+                                }
+                            },
+                        ) {
+                            LikedScreen(services)
+                        }
+                    }
+                    composable(Destinations.RECENTS) {
+                        PlayerShell(
+                            currentRoute = Destinations.RECENTS,
+                            onSelectCategory = goCategory,
+                            onPlayerTap = {
+                                navController.navigate(Destinations.NOW_PLAYING) {
+                                    launchSingleTop = true
+                                }
+                            },
+                        ) {
+                            RecentsScreen(services)
+                        }
+                    }
+                    composable(Destinations.SETTINGS) {
+                        PlayerShell(
+                            currentRoute = Destinations.SETTINGS,
+                            onSelectCategory = goCategory,
+                            onPlayerTap = {
+                                navController.navigate(Destinations.NOW_PLAYING) {
+                                    launchSingleTop = true
+                                }
+                            },
+                        ) {
+                            SettingsScreen(services, authVm) {
+                                navController.navigate(Destinations.SIGN_IN) {
+                                    popUpTo(Destinations.SPLASH) { inclusive = true }
+                                }
+                            }
+                        }
+                    }
                     composable(Destinations.NOW_PLAYING) {
                         PlayerShell(
-                            onPlayerTap = { navController.popBackStack() },
-                            onHome = {
-                                navController.popBackStack(Destinations.SEARCH, inclusive = false)
-                            },
-                            onSearch = {
-                                navController.popBackStack(Destinations.SEARCH, inclusive = false)
-                            },
                             currentRoute = Destinations.SEARCH,
+                            onSelectCategory = goCategory,
+                            onPlayerTap = { navController.popBackStack() },
                         ) {
                             NowPlayingScreen(onClose = { navController.popBackStack() })
                         }
@@ -168,15 +211,14 @@ class AuthVmFactory(private val services: PlexApp.Services) : ViewModelProvider.
 
 @Composable
 fun PlayerShell(
-    onPlayerTap: () -> Unit,
-    onHome: () -> Unit,
-    onSearch: () -> Unit,
     currentRoute: String,
+    onSelectCategory: (String) -> Unit,
+    onPlayerTap: () -> Unit,
     content: @Composable () -> Unit,
 ) {
     Scaffold(
         topBar = {
-            TopBar(currentRoute = currentRoute, onHome = onHome, onSearch = onSearch)
+            CategoryBar(currentRoute = currentRoute, onSelect = onSelectCategory)
         },
         bottomBar = {
             PlayerBar(onTap = onPlayerTap)
@@ -192,36 +234,53 @@ fun PlayerShell(
     }
 }
 
+private val CategoryTabs = listOf(
+    Destinations.HOME to "Home",
+    Destinations.SEARCH to "Search",
+    Destinations.LIKED to "Liked",
+    Destinations.RECENTS to "Recent",
+    Destinations.SETTINGS to "Settings",
+)
+
 @Composable
-fun TopBar(
+fun CategoryBar(
     currentRoute: String,
-    onHome: () -> Unit,
-    onSearch: () -> Unit,
+    onSelect: (String) -> Unit,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(androidx.compose.material3.MaterialTheme.colorScheme.surface)
+            .background(MaterialTheme.colorScheme.surface)
             .statusBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = "PLEX",
-            color = PlexAccent,
-            fontWeight = androidx.compose.ui.text.font.FontWeight.Black,
-            fontSize = 24.sp,
-            modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .clickable(onClick = onHome),
-        )
-        Spacer(Modifier.weight(1f))
-        IconButton(onClick = onSearch) {
-            Icon(
-                Icons.Default.Search,
-                contentDescription = "Search",
-                tint = if (currentRoute == Destinations.SEARCH) PlexAccent else PlexMuted,
-            )
+        CategoryTabs.forEach { (route, label) ->
+            val active = currentRoute == route
+            val icon = when (route) {
+                Destinations.HOME -> Icons.Filled.Home
+                Destinations.SEARCH -> Icons.Filled.Search
+                Destinations.LIKED -> Icons.Filled.Favorite
+                Destinations.RECENTS -> Icons.Filled.History
+                Destinations.SETTINGS -> Icons.Filled.Settings
+                else -> Icons.Filled.Home
+            }
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable(onClick = { onSelect(route) })
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+            ) {
+                Icon(icon, contentDescription = label, tint = if (active) PlexAccent else PlexMuted)
+                Text(
+                    label,
+                    color = if (active) PlexAccent else PlexMuted,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
         }
     }
 }

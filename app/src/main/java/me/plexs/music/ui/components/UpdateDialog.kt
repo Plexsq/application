@@ -2,6 +2,7 @@ package me.plexs.music.ui.components
 
 import android.content.Intent
 import android.net.Uri
+import android.provider.Settings
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
@@ -12,19 +13,25 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import me.plexs.music.BuildConfig
 import me.plexs.music.PlexApp
 import me.plexs.music.ui.theme.PlexAccent
+import me.plexs.music.updater.AppUpdater
 
 @Composable
 fun UpdateDialog(services: PlexApp.Services) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var show by remember { mutableStateOf(false) }
-    var apkUrl by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var label by remember { mutableStateOf("") }
+    var waitingForPermission by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         val app = runCatching { services.bootstrap.latest() }.getOrNull() ?: return@LaunchedEffect
@@ -42,34 +49,55 @@ fun UpdateDialog(services: PlexApp.Services) {
             }
         }
         if (newer) {
-            apkUrl = app.apkUrl ?: "https://github.com/Plexsq/application/releases/latest"
+            label = "A new version of Plex is available — it installs in-app."
             show = true
         }
     }
 
     if (show) {
         AlertDialog(
-            onDismissRequest = { show = false },
+            onDismissRequest = { if (!busy) show = false },
             shape = RoundedCornerShape(16.dp),
             containerColor = MaterialTheme.colorScheme.surface,
-            title = {
-                Text("A new version of Plex is available", fontWeight = FontWeight.Bold)
-            },
+            title = { Text("Update Plex", fontWeight = FontWeight.Bold) },
             text = {
-                Text("Update to the latest build to get new features and fixes.")
+                Text(if (busy) label else "A new version of Plex is available. Updating in-app downloads a small patch instead of the full app when possible.")
             },
             confirmButton = {
-                TextButton(onClick = {
-                    show = false
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(apkUrl)))
-                }) {
-                    Text("Update", color = PlexAccent, fontWeight = FontWeight.Bold)
-                }
+                TextButton(
+                    enabled = !busy,
+                    onClick = {
+                        busy = true
+                        scope.launch {
+                            AppUpdater.run(context,
+                                onProgress = { l, _, _ -> label = l },
+                                onDone = { result ->
+                                    busy = false
+                                    when (result) {
+                                        AppUpdater.Result.AlreadyCurrent -> { show = false }
+                                        AppUpdater.Result.NeedsInstallPermission -> {
+                                            context.startActivity(
+                                                Intent(
+                                                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                                    Uri.parse("package:${context.packageName}"),
+                                                )
+                                            )
+                                            waitingForPermission = true
+                                            show = false
+                                        }
+                                        AppUpdater.Result.InstallComplete -> { label = "Done"; show = false }
+                                        is AppUpdater.Result.Failed -> {
+                                            label = result.message
+                                        }
+                                    }
+                                },
+                            )
+                        }
+                    },
+                ) { Text("Update", color = PlexAccent, fontWeight = FontWeight.Bold) }
             },
             dismissButton = {
-                TextButton(onClick = { show = false }) {
-                    Text("Later")
-                }
+                TextButton(enabled = !busy, onClick = { show = false }) { Text("Later") }
             },
         )
     }

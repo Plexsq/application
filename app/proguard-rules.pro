@@ -18,3 +18,8 @@
 -keepclasseswithmembers class me.plexs.music.** {
     kotlinx.serialization.KSerializer serializer(...);
 }
+
+# Apache commons-compress (bzip2) used by the in-app update patcher.
+-keep class org.apache.commons.compress.** { *; }
+-dontwarn org.apache.commons.compress.**
+-keep class me.plexs.music.updater.** { *; }

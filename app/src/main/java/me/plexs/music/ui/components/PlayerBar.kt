@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Repeat
+import androidx.compose.material.icons.automirrored.filled.Shuffle
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
@@ -46,6 +48,8 @@ fun PlayerBar(
     val hasItem by PlaybackController.hasItem.collectAsState()
     val currentTime by PlaybackController.currentTime.collectAsState()
     val duration by PlaybackController.duration.collectAsState()
+    val shuffle by PlaybackController.shuffle.collectAsState()
+    val repeat by PlaybackController.repeat.collectAsState()
     val song = PlaybackController.currentSong
     if (!hasItem || song == null) return
 
@@ -104,6 +108,13 @@ fun PlayerBar(
                     )
                 }
             }
+            IconButton(onClick = { PlaybackController.toggleShuffle() }) {
+                Icon(
+                    Icons.AutoMirrored.Filled.Shuffle,
+                    contentDescription = "Shuffle",
+                    tint = if (shuffle) PlexAccent else PlexMuted,
+                )
+            }
             IconButton(onClick = { PlaybackController.previous() }) {
                 Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", tint = PlexMuted)
             }
@@ -116,6 +127,13 @@ fun PlayerBar(
             }
             IconButton(onClick = { PlaybackController.next() }) {
                 Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = PlexMuted)
+            }
+            IconButton(onClick = { PlaybackController.cycleRepeat() }) {
+                Icon(
+                    Icons.AutoMirrored.Filled.Repeat,
+                    contentDescription = "Repeat",
+                    tint = if (repeat != 0) PlexAccent else PlexMuted,
+                )
             }
         }
     }

@@ -21,7 +21,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -57,7 +56,6 @@ fun HomeScreen(services: PlexApp.Services, vm: AuthViewModel, onSignedOut: () ->
     val scope = rememberCoroutineScope()
     val favorites by PlaybackController.favorites.collectAsState()
     val recent by PlaybackController.recentlyPlayed.collectAsState()
-    val user = services.session.user
 
     val offline = services.offline
     val offlineVersion by offline.version.collectAsState()
@@ -73,24 +71,6 @@ fun HomeScreen(services: PlexApp.Services, vm: AuthViewModel, onSignedOut: () ->
     val offlinePlayLists = remember(offlineVersion) { offline.playLists() }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        androidx.compose.foundation.layout.Spacer(Modifier.height(28.dp))
-        Column(Modifier.padding(horizontal = 24.dp)) {
-            Text(
-                text = "PLEX",
-                color = PlexAccent,
-                fontSize = 34.sp,
-                fontWeight = FontWeight.Black,
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = "Good ${timeGreeting()}, ${user?.username?.let { "@$it" } ?: "you"}",
-                color = PlexMuted,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Medium,
-            )
-        }
-        Spacer(Modifier.height(20.dp))
-
         LazyColumn(Modifier.fillMaxWidth()) {
             item {
                 LikedSongsHeader(favorites)
@@ -221,16 +201,6 @@ fun HomeScreen(services: PlexApp.Services, vm: AuthViewModel, onSignedOut: () ->
                     )
                 }
             }
-            item { Spacer(Modifier.height(24.dp)) }
-            item {
-                OutlinedButton(
-                    onClick = { vm.signOut(onSignedOut) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp),
-                ) { Text("Sign out") }
-            }
-            item { Spacer(Modifier.height(24.dp)) }
         }
     }
 }
@@ -276,13 +246,4 @@ private fun LikedSongsHeader(favorites: List<Song>, onPlay: (() -> Unit)? = null
         )
     }
     if (favorites.isEmpty()) Spacer(Modifier.height(12.dp))
-}
-
-private fun timeGreeting(): String {
-    val h = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
-    return when {
-        h in 5..11 -> "morning"
-        h in 12..17 -> "afternoon"
-        else -> "evening"
-    }
 }

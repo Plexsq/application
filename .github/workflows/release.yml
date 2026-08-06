@@ -61,3 +61,57 @@ jobs:
             --title "$TITLE" \
             --notes-file NOTES.md \
             Plex.apk
+
+      - name: Generate delta patch and update manifest
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          TAG="${GITHUB_REF_NAME#BETA-}"
+          CODE=$(( ${TAG%%.*} * 100 + ${TAG#*.} ))
+          APK_SHA="$(sha256sum Plex.apk | awk '{print $1}')"
+          APK_SIZE="$(stat -c%s Plex.apk)"
+          PREV=""
+          for t in $(git tag --sort=-v:refname); do
+            [ "$t" != "$GITHUB_REF_NAME" ] && PREV="$t" && break
+          done
+          FROM_CODE=0
+          FROM_VER=""
+          PATCHED=0
+          if [ -n "$PREV" ]; then
+            gh release download "$PREV" -p "Plex.apk" -o old.apk 2>/dev/null || true
+            if [ -s old.apk ]; then
+              sudo apt-get update -qq && sudo apt-get install -y bsdiff
+              PT="${PREV#BETA-}"
+              FROM_VER="$PT"
+              FROM_CODE=$(( ${PT%%.*} * 100 + ${PT#*.} ))
+              bsdiff old.apk Plex.apk Plex.patch
+              PATCHED=1
+            fi
+          fi
+          PATCH_SHA="NONE"
+          PATCH_SIZE=0
+          PATCH_URL=""
+          if [ "$PATCHED" = "1" ]; then
+            PATCH_SHA="$(sha256sum Plex.patch | awk '{print $1}')"
+            PATCH_SIZE="$(stat -c%s Plex.patch)"
+            PATCH_URL="https://github.com/${{ github.repository }}/releases/download/$GITHUB_REF_NAME/Plex.patch"
+            gh release upload "$GITHUB_REF_NAME" Plex.patch --clobber
+          fi
+          APK_URL="https://github.com/${{ github.repository }}/releases/download/$GITHUB_REF_NAME/Plex.apk"
+          cat > update-manifest.json <<EOF
+          {
+            "toVersion": "$TAG",
+            "toCode": $CODE,
+            "fromVersion": "$FROM_VER",
+            "fromCode": $FROM_CODE,
+            "apkSize": $APK_SIZE,
+            "apkSha256": "$APK_SHA",
+            "apkUrl": "$APK_URL",
+            "patchSize": $PATCH_SIZE,
+            "patchSha256": "$PATCH_SHA",
+            "patchUrl": "$PATCH_URL"
+          }
+          EOF
+          gh release upload "$GITHUB_REF_NAME" update-manifest.json --clobber
