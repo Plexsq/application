@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -120,7 +121,7 @@ fun HomeScreen(services: PlexApp.Services, vm: AuthViewModel, onSignedOut: () ->
                             placeholder = { Text("Search offline") },
                             leadingIcon = {
                                 Icon(
-                                    androidx.compose.material.icons.Icons.Default.Search,
+                                    Icons.Default.Search,
                                     contentDescription = null,
                                 )
                             },

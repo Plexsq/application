@@ -95,8 +95,7 @@ class OfflineRepository(context: Context) {
             }
             val streamBase = "https://music.plexs.me/api/embed/stream/" + song.id
             val url = streamBase + "?low=1"
-            val ext = "m4a"
-            val file = fileFor(song.id, ext)
+            val file = fileFor(song.id)
             Http.client.newCall(
                 okhttp3.Request.Builder().url(url).get().build()
             ).execute().use { resp ->
