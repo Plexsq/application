@@ -73,10 +73,7 @@ jobs:
           CODE=$(( ${TAG%%.*} * 100 + ${TAG#*.} ))
           APK_SHA="$(sha256sum Plex.apk | awk '{print $1}')"
           APK_SIZE="$(stat -c%s Plex.apk)"
-          PREV=""
-          for t in $(git tag --sort=-v:refname); do
-            [ "$t" != "$GITHUB_REF_NAME" ] && PREV="$t" && break
-          done
+          PREV="$(gh release list --limit 2 --json tagName --jq '.[1].tagName // empty' 2>/dev/null || true)"
           FROM_CODE=0
           FROM_VER=""
           PATCHED=0
