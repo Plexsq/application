@@ -58,6 +58,7 @@ jobs:
           echo "**${TITLE} — mobile release.**" > NOTES.md
           PREV="$(git tag --sort=-v:refname | head -1)^"
           { git log "${PREV}..HEAD" --pretty="format:- %s" 2>/dev/null || git log --pretty="- %s" -10; } >> NOTES.md
+          gh release delete "$GITHUB_REF_NAME" --yes >/dev/null 2>&1 || true
           gh release create "$GITHUB_REF_NAME" \
             --title "$TITLE" \
             --notes-file NOTES.md \
