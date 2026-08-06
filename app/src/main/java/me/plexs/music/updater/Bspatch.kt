@@ -118,12 +118,12 @@ object Bspatch {
         return java.nio.channels.Channels.newInputStream(m)
     }
 
-    private class BufferedReader(private val in: InputStream) {
+    private class BufferedReader(private val source: InputStream) {
         private val buf = java.io.ByteArrayOutputStream()
         fun readFully(b: ByteArray) {
             var got = 0
             while (got < b.size) {
-                val n = in.read(b, got, b.size - got)
+                val n = source.read(b, got, b.size - got)
                 if (n < 0) throw IOException("patch header truncated")
                 got += n
             }

@@ -13,10 +13,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Repeat
-import androidx.compose.material.icons.automirrored.filled.Shuffle
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.Icon
@@ -110,7 +110,7 @@ fun PlayerBar(
             }
             IconButton(onClick = { PlaybackController.toggleShuffle() }) {
                 Icon(
-                    Icons.AutoMirrored.Filled.Shuffle,
+                    Icons.Filled.Shuffle,
                     contentDescription = "Shuffle",
                     tint = if (shuffle) PlexAccent else PlexMuted,
                 )
@@ -130,7 +130,7 @@ fun PlayerBar(
             }
             IconButton(onClick = { PlaybackController.cycleRepeat() }) {
                 Icon(
-                    Icons.AutoMirrored.Filled.Repeat,
+                    Icons.Filled.Repeat,
                     contentDescription = "Repeat",
                     tint = if (repeat != 0) PlexAccent else PlexMuted,
                 )
