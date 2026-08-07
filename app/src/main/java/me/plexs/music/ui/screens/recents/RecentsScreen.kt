@@ -9,8 +9,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -32,11 +34,13 @@ import me.plexs.music.ui.components.SongPlaylistPickerDialog
 import me.plexs.music.ui.screens.search.SongRow
 import me.plexs.music.ui.theme.PlexMuted
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecentsScreen(services: PlexApp.Services) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val recent by PlaybackController.recentlyPlayed.collectAsState()
+    var refreshing by remember { mutableStateOf(false) }
 
     val offline = services.offline
     val offlineVersion by offline.version.collectAsState()
@@ -59,30 +63,41 @@ fun RecentsScreen(services: PlexApp.Services) {
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
         )
-        if (recent.isEmpty()) {
-            Text(
-                "Songs you play will show up here.",
-                color = PlexMuted,
-                modifier = Modifier.padding(horizontal = 24.dp),
-            )
-        }
-        LazyColumn(Modifier.fillMaxWidth()) {
-            itemsIndexed(recent) { i, song ->
-                SongRow(
-                    song = song,
-                    onPlay = { PlaybackController.playSongs(context, recent, i) },
-                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 6.dp),
-                    downloaded = song.id in downloadedIds,
-                    downloading = downloadStates[song.id] is DownloadState.Downloading,
-                    onDownload = { downloadSong(song) },
-                    onDelete = { scope.launch { offline.delete(song.id) } },
-                    onAddToPlaylist = { addTarget = song },
-                    onPlayNext = { PlaybackController.playNext(context, listOf(song)) },
-                    onAddToQueue = { PlaybackController.addToQueue(context, listOf(song)) },
-                    onShare = { me.plexs.music.ui.components.shareSong(context, song) },
-                )
+        PullToRefreshBox(
+            isRefreshing = refreshing,
+            onRefresh = {
+                refreshing = true
+                PlaybackController.refresh(context)
+                scope.launch { kotlinx.coroutines.delay(900); refreshing = false }
+            },
+        ) {
+            LazyColumn(Modifier.fillMaxWidth()) {
+                if (recent.isEmpty()) {
+                    item {
+                        Text(
+                            "Songs you play will show up here.",
+                            color = PlexMuted,
+                            modifier = Modifier.padding(horizontal = 24.dp),
+                        )
+                    }
+                }
+                itemsIndexed(recent) { i, song ->
+                    SongRow(
+                        song = song,
+                        onPlay = { PlaybackController.playSongs(context, recent, i) },
+                        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 6.dp),
+                        downloaded = song.id in downloadedIds,
+                        downloading = downloadStates[song.id] is DownloadState.Downloading,
+                        onDownload = { downloadSong(song) },
+                        onDelete = { scope.launch { offline.delete(song.id) } },
+                        onAddToPlaylist = { addTarget = song },
+                        onPlayNext = { PlaybackController.playNext(context, listOf(song)) },
+                        onAddToQueue = { PlaybackController.addToQueue(context, listOf(song)) },
+                        onShare = { me.plexs.music.ui.components.shareSong(context, song) },
+                    )
+                }
+                item { Spacer(Modifier.height(24.dp)) }
             }
-            item { Spacer(Modifier.height(24.dp)) }
         }
     }
 

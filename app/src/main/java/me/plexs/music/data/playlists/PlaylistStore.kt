@@ -84,8 +84,10 @@ class PlaylistStore(context: Context) {
 
     /**
      * Merges the server-side playlist set into local storage: adopt the server
-     * set wholesale when local is empty, otherwise union by id (keep the local
-     * copy for matches so unsaved edits win, add server-only entries).
+     * set wholesale when local is empty, otherwise union by id. For playlists that
+     * already exist locally we ALSO merge in server-only songs (and server renames)
+     * so changes made on the desktop/another device appear without a restart —
+     * but we keep local-only songs so untracked local edits are never dropped.
      */
     fun syncFromServer(server: List<me.plexs.music.data.api.UserPlaylist>) {
         if (server.isEmpty()) return
@@ -96,11 +98,23 @@ class PlaylistStore(context: Context) {
             val byId = local.associateBy { it.id }
             val out = local.toMutableList()
             for (sp in server) {
-                if (byId[sp.id] == null) out.add(sp.toLocal())
+                val existing = byId[sp.id]
+                if (existing == null) {
+                    out.add(sp.toLocal())
+                } else {
+                    val serverSeen = sp.songs.map { it.id }.toSet()
+                    // Server order + name take precedence so desktop changes propagate;
+                    // keep any local-only songs the server hasn't seen yet.
+                    val localOnly = existing.songs.filter { it.id !in serverSeen }
+                    val finalSongs = (sp.songs + localOnly).distinctBy { it.id }
+                    out[out.indexOf(existing)] = existing.copy(name = sp.name, songs = finalSongs)
+                }
             }
             out
         }
-        if (merged.map { it.id } != local.map { it.id }) {
+        if (merged.map { it.id } != local.map { it.id } ||
+            merged.zip(local).any { it.first.name != it.second.name || it.first.songs != it.second.songs }
+        ) {
             write(PlaylistData(playlists = merged))
         }
     }

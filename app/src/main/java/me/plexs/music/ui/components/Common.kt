@@ -1,5 +1,6 @@
 package me.plexs.music.ui.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,10 +35,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import me.plexs.music.ui.theme.PlexAccent
@@ -312,11 +311,13 @@ fun shareSong(context: android.content.Context, song: me.plexs.music.data.api.So
 
 /**
  * Long-press context menu for a user playlist — mirrors the desktop playlist menu
- * (Play / Play next / Add to queue / Rename / Delete). Rename opens a small dialog.
+ * (Open / Play / Play next / Add to queue / Rename / Delete). Open shows the song
+ * list. Rename opens a small dialog.
  */
 @Composable
 fun PlaylistContextMenu(
     playlist: me.plexs.music.data.playlists.UserPlaylist,
+    onOpen: () -> Unit,
     onPlay: () -> Unit,
     onPlayNext: () -> Unit,
     onAddToQueue: () -> Unit,
@@ -328,6 +329,10 @@ fun PlaylistContextMenu(
     var confirmDelete by remember { mutableStateOf(false) }
 
     val options = @Composable {
+        DropdownMenuItem(
+            text = { Text("Open playlist") },
+            onClick = { onDismiss(); onOpen() },
+        )
         DropdownMenuItem(
             text = { Text("Play") },
             onClick = { onDismiss(); onPlay() },
@@ -397,4 +402,68 @@ fun PlaylistContextMenu(
             },
         )
     }
+}
+
+/**
+ * A popup that shows the songs inside a playlist (mirrors the Now Playing sheet
+ * style). Tapping a song plays it from the playlist. Not used for editing.
+ */
+@Composable
+fun PlaylistSheet(
+    playlist: me.plexs.music.data.playlists.UserPlaylist,
+    onDismiss: () -> Unit,
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surface,
+        title = {
+            Text(
+                playlist.name,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+        },
+        text = {
+            if (playlist.songs.isEmpty()) {
+                Text("This playlist is empty. Add songs to it from any track's menu.", color = PlexMuted)
+            } else {
+                androidx.compose.foundation.lazy.LazyColumn(
+                    modifier = Modifier.height(320.dp),
+                ) {
+                    items(playlist.songs.size) { i ->
+                        val s = playlist.songs[i]
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    me.plexs.music.playback.PlaybackController.playSongs(context, playlist.songs, i)
+                                }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        ) {
+                            coil.compose.AsyncImage(
+                                model = s.thumbnail,
+                                contentDescription = null,
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(PlexSurfaceVariant),
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(s.title, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                Spacer(Modifier.height(2.dp))
+                                Text(s.artist ?: "", color = PlexMuted, fontSize = 12.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        confirmButton = {},
+    )
 }

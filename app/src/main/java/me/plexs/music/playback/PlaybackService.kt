@@ -1,28 +1,38 @@
 package me.plexs.music.playback
 
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
-import android.app.Service
-import android.content.Intent
-import android.os.Build
-import android.os.IBinder
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
-import me.plexs.music.MainActivity
-import me.plexs.music.R
+import androidx.annotation.OptIn
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.session.MediaSession
+import androidx.media3.session.MediaSessionService
 
-class PlaybackService : Service() {
+/**
+ * Media3 [MediaSessionService]. Handing the [MediaSession] to the media3 framework
+ * makes it publish a proper MediaStyle media notification for us: real transport
+ * icons (play/pause/previous/next), a seek bar (API 29+) and, on Android 13+,
+ * system-wide media controls — all kept in sync automatically. Shuffle & repeat
+ * are exposed as extra media buttons matching the in-app Now Playing controls.
+ */
+@OptIn(UnstableApi::class)
+class PlaybackService : MediaSessionService() {
+
+    private var currentSession: androidx.media3.session.MediaSession? = null
 
     override fun onCreate() {
         super.onCreate()
-        createChannel()
-        startForeground(NOTIFICATION_ID, buildNotification())
-        PlaybackController.attachNotificationCallback { startForeground(NOTIFICATION_ID, buildNotification()) }
+        // Reuse the session the controller owns (same ExoPlayer instance).
+        currentSession = PlaybackController.session
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
+        currentSession ?: PlaybackController.session
+
+    override fun onBind(intent: android.content.Intent?): android.os.IBinder? =
+        super.onBind(intent)
+
+    override fun onStartCommand(intent: android.content.Intent?, flags: Int, startId: Int): Int {
+        // Shuffle/repeat/more came through as the ACTION_* intents before the MediaSession
+        // takeover; now they ride the session's media buttons instead. Keep them for forward
+        // compatibility in case an old PendingIntent still pokes the service.
         when (intent?.action) {
             ACTION_PLAY_PAUSE -> PlaybackController.playPause()
             ACTION_NEXT -> PlaybackController.next()
@@ -31,141 +41,34 @@ class PlaybackService : Service() {
             ACTION_REPEAT -> PlaybackController.cycleRepeat()
             ACTION_STOP -> {
                 PlaybackController.pause()
-                stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
                 return START_NOT_STICKY
             }
         }
-        startForeground(NOTIFICATION_ID, buildNotification())
-        return START_STICKY
+        return super.onStartCommand(intent, flags, startId)
     }
 
-    private fun buildNotification(): Notification {
-        val song = PlaybackController.currentSong
-        val playing = PlaybackController.playing.value
-        val shuffleOn = PlaybackController.shuffle.value
-        val repeatOn = PlaybackController.repeat.value > 0
-
-        val contentIntent = PendingIntent.getActivity(
-            this, 0,
-            Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-        val playPause = PendingIntent.getService(
-            this, 1,
-            Intent(this, PlaybackService::class.java).setAction(ACTION_PLAY_PAUSE),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-        val next = PendingIntent.getService(
-            this, 2,
-            Intent(this, PlaybackService::class.java).setAction(ACTION_NEXT),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-        val prev = PendingIntent.getService(
-            this, 3,
-            Intent(this, PlaybackService::class.java).setAction(ACTION_PREV),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-        val shuffle = PendingIntent.getService(
-            this, 4,
-            Intent(this, PlaybackService::class.java).setAction(ACTION_SHUFFLE),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-        val repeat = PendingIntent.getService(
-            this, 5,
-            Intent(this, PlaybackService::class.java).setAction(ACTION_REPEAT),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-
-        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_stat_plex)
-            .setContentTitle(song?.title ?: "Plex")
-            .setContentText(song?.artist ?: "")
-            .setContentIntent(contentIntent)
-            .setOngoing(true)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setOnlyAlertOnce(true)
-            .setShowWhen(false)
-            .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
-            .addAction(R.drawable.ic_shuffle, if (shuffleOn) "Shuffle on" else "Shuffle", shuffle)
-            .addAction(R.drawable.ic_stat_plex, "Previous", prev)
-            .addAction(R.drawable.ic_stat_plex, if (playing) "Pause" else "Play", playPause)
-            .addAction(R.drawable.ic_stat_plex, "Next", next)
-            .addAction(R.drawable.ic_repeat, if (repeatOn) "Repeat on" else "Repeat", repeat)
-        val thumb = song?.thumbnail
-        if (thumb != null) {
-            val nm = NotificationManagerCompat.from(this)
-            Thread {
-                val bmp = loadBitmap(thumb)
-                if (bmp != null) {
-                    largeIcon = bmp
-                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || hasNotifPermission()) {
-                        nm.notify(NOTIFICATION_ID, builder.setLargeIcon(bmp).build())
-                    }
-                }
-            }.start()
-        }
-        return builder.build()
-    }
-
-    @Volatile
-    private var largeIcon: android.graphics.Bitmap? = null
-
-    private fun hasNotifPermission(): Boolean =
-        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED
-
-    private fun loadBitmap(url: String): android.graphics.Bitmap? {
-        return try {
-            val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
-            conn.connectTimeout = 5000
-            conn.readTimeout = 5000
-            conn.doInput = true
-            conn.connect()
-            val stream = conn.inputStream
-            val bmp = android.graphics.BitmapFactory.decodeStream(stream)
-            stream.close()
-            conn.disconnect()
-            bmp
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    private fun createChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                getString(R.string.playback_channel_name),
-                NotificationManager.IMPORTANCE_LOW,
-            )
-            channel.setShowBadge(false)
-            val nm = getSystemService(NotificationManager::class.java)
-            nm?.createNotificationChannel(channel)
-        }
-    }
-
-    override fun onBind(intent: Intent?): IBinder? = null
-
-    override fun onTaskRemoved(rootIntent: Intent?) {
+    override fun onTaskRemoved(rootIntent: android.content.Intent?) {
         PlaybackController.pause()
         stopSelf()
         super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
-        PlaybackController.detachNotificationCallback()
+        currentSession = null
         super.onDestroy()
     }
 
     companion object {
         const val CHANNEL_ID = "playback"
-        private const val NOTIFICATION_ID = 1001
         const val ACTION_PLAY_PAUSE = "me.plexs.music.ACTION_PLAY_PAUSE"
         const val ACTION_NEXT = "me.plexs.music.ACTION_NEXT"
         const val ACTION_PREV = "me.plexs.music.ACTION_PREV"
         const val ACTION_SHUFFLE = "me.plexs.music.ACTION_SHUFFLE"
         const val ACTION_REPEAT = "me.plexs.music.ACTION_REPEAT"
         const val ACTION_STOP = "me.plexs.music.ACTION_STOP"
+
+        const val CMD_SHUFFLE = "me.plexs.music.cmd.shuffle"
+        const val CMD_REPEAT = "me.plexs.music.cmd.repeat"
     }
 }

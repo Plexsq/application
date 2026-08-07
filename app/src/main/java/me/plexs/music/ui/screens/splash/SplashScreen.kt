@@ -47,5 +47,8 @@ private suspend fun decide(session: SessionStore): String {
     // Network blip with a stored token still lands on Home rather than a flash to auth.
     val state = withTimeoutOrNull(5000) { runCatching { AuthRepository(session).getSession() }.getOrDefault(AuthState(session = null)) }
         ?: AuthState(session = null)
-    return if (state.session != null) Destinations.MAIN else Destinations.SIGN_IN
+    if (state.session != null) return Destinations.MAIN
+    // Invalid/expired token — clear it so we never reuse a stale account on the next login.
+    session.clear()
+    return Destinations.SIGN_IN
 }

@@ -31,6 +31,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import kotlinx.coroutines.launch
@@ -83,8 +85,10 @@ class MainActivity : ComponentActivity() {
         me.plexs.music.playback.PlaybackController.restore(this)
         setContent {
             val session = services.session
-            val dark = session.themeMode != "light"
-            val accent = me.plexs.music.ui.theme.accentColor(session.accentHex)
+            val darkMode by services.themeMode.collectAsState()
+            val accentHexValue by services.accentHex.collectAsState()
+            val dark = darkMode != "light"
+            val accent = me.plexs.music.ui.theme.accentColor(accentHexValue)
             PlexTheme(dark = dark, accent = accent) {
                 val navController = rememberNavController()
                 val authVm: AuthViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
@@ -147,11 +151,13 @@ class MainActivity : ComponentActivity() {
                                     1 -> SearchScreen(services)
                                     2 -> LikedScreen(services)
                                     3 -> RecentsScreen(services)
-                                    4 -> SettingsScreen(services, authVm) {
+                                    4 -> SettingsScreen(services, authVm, onSignedOut = {
                                         navController.navigate(Destinations.SIGN_IN) {
                                             popUpTo(Destinations.SPLASH) { inclusive = true }
                                         }
-                                    }
+                                    }, onOpenOffline = {
+                                        navController.navigate(Destinations.OFFLINE)
+                                    })
                                 }
                             }
                         }
@@ -160,6 +166,9 @@ class MainActivity : ComponentActivity() {
                         Scaffold {
                             NowPlayingScreen(onClose = { navController.popBackStack() })
                         }
+                    }
+                    composable(Destinations.OFFLINE) {
+                        me.plexs.music.ui.screens.offline.OfflineScreen(services)
                     }
                 }
             }

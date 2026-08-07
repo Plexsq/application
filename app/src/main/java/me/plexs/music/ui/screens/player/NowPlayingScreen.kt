@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -72,6 +73,7 @@ import me.plexs.music.ui.theme.PlexMuted
 import me.plexs.music.ui.theme.PlexSurfaceVariant
 
 private fun fmt(ms: Long): String {
+    if (ms <= 0 || ms == Long.MIN_VALUE) return "0:00"
     val s = ms / 1000
     val m = s / 60
     val sec = s % 60
@@ -108,11 +110,11 @@ fun NowPlayingScreen(onClose: () -> Unit) {
         enter = fadeIn(tween(250)) + slideInVertically(tween(300)) { it / 10 },
         exit = fadeOut(tween(200)) + slideOutVertically(tween(250)) { it / 10 },
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(onClick = onClose) {
@@ -138,7 +140,7 @@ fun NowPlayingScreen(onClose: () -> Unit) {
             }
 
             if (showLyrics) {
-                LyricsView(song = song, lyrics = lyrics)
+                LyricsView(song = song, lyrics = lyrics, currentTimeMs = currentTime)
             } else if (showQueue) {
                 Column(Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
                     Text(
@@ -348,7 +350,7 @@ fun QueueRow(song: Song, active: Boolean, onClick: () -> Unit, modifier: Modifie
 }
 
 @Composable
-private fun LyricsView(song: Song?, lyrics: LyricsResult?) {
+private fun LyricsView(song: Song?, lyrics: LyricsResult?, currentTimeMs: Long) {
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
         Text(
             "Lyrics",
@@ -361,17 +363,42 @@ private fun LyricsView(song: Song?, lyrics: LyricsResult?) {
         } else if (lyrics == null) {
             Text("No lyrics available", color = PlexMuted)
         } else {
-            androidx.compose.foundation.rememberScrollState().let { scrollState ->
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .verticalScroll(scrollState),
-                ) {
-                    val lines = lyrics.synced?.map { it.text }
-                        ?: lyrics.plain?.split("\n")
-                        ?: emptyList()
-                    lines.forEach { line ->
+            val lr = lyrics
+            val scrollState = rememberScrollState()
+            // Active line index derived from the current playback position against each timestamp.
+            val activeIndex = remember(currentTimeMs, lr) {
+                lr.synced?.let { synced ->
+                    var idx = 0
+                    for ((i, l) in synced.withIndex()) {
+                        if (l.time <= currentTimeMs / 1000.0) idx = i else break
+                    }
+                    idx
+                } ?: -1
+            }
+            LaunchedEffect(activeIndex) {
+                if (activeIndex > 0) {
+                    scrollState.animateScrollTo(scrollState.value + 56)
+                }
+            }
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(scrollState),
+            ) {
+                if (lr.synced != null) {
+                    lr.synced.forEachIndexed { i, line ->
+                        val active = i == activeIndex
+                        Text(
+                            text = line.text,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                            color = if (active) PlexAccent else PlexMuted,
+                            modifier = Modifier.padding(vertical = 4.dp),
+                        )
+                    }
+                } else {
+                    lr.plain?.split("\n")?.forEach { line ->
                         Text(
                             text = line,
                             style = MaterialTheme.typography.bodyLarge,
@@ -379,8 +406,8 @@ private fun LyricsView(song: Song?, lyrics: LyricsResult?) {
                             modifier = Modifier.padding(vertical = 4.dp),
                         )
                     }
-                    Spacer(Modifier.height(32.dp))
                 }
+                Spacer(Modifier.height(32.dp))
             }
         }
     }

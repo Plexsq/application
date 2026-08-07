@@ -23,6 +23,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -36,6 +38,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
@@ -43,13 +47,71 @@ import kotlinx.coroutines.launch
 import me.plexs.music.BuildConfig
 import me.plexs.music.PlexApp
 import me.plexs.music.data.api.StatsData
+import me.plexs.music.playback.PlaybackController
 import me.plexs.music.ui.auth.AuthViewModel
 import me.plexs.music.ui.components.QrScanner
 import me.plexs.music.ui.theme.PlexAccent
 import me.plexs.music.ui.theme.PlexMuted
 
+val discordLogo: androidx.compose.ui.graphics.vector.ImageVector by lazy {
+    androidx.compose.ui.graphics.vector.ImageVector.Builder(
+        name = "Discord", defaultWidth = 24.dp, defaultHeight = 24.dp,
+        viewportWidth = 24f, viewportHeight = 24f,
+    ).path(fill = androidx.compose.ui.graphics.SolidColor(Color.White)) {
+        moveTo(20.317f, 4.369f)
+        lineTo(18.05f, 3.0f)
+        lineToRelative(-0.373f, 0.735f)
+        lineTo(6.323f, 3.735f)
+        lineTo(5.95f, 3.0f)
+        lineTo(3.683f, 4.369f)
+        lineTo(0.0f, 3.0f)
+        verticalLineTo(22.0f)
+        horizontalLineTo(5.45f)
+        lineTo(6.94f, 20.2f)
+        horizontalLineTo(17.06f)
+        lineTo(18.55f, 22.0f)
+        horizontalLineTo(24.0f)
+        verticalLineTo(3.0f)
+        close()
+        moveTo(8.14f, 15.5f)
+        curveTo(7.32f, 15.5f, 6.66f, 14.84f, 6.66f, 14.03f)
+        curveTo(6.66f, 13.22f, 7.32f, 12.56f, 8.14f, 12.56f)
+        curveTo(8.96f, 12.56f, 9.62f, 13.22f, 9.62f, 14.03f)
+        curveTo(9.62f, 14.84f, 8.96f, 15.5f, 8.14f, 15.5f)
+        close()
+        moveTo(15.86f, 15.5f)
+        curveTo(15.04f, 15.5f, 14.38f, 14.84f, 14.38f, 14.03f)
+        curveTo(14.38f, 13.22f, 15.04f, 12.56f, 15.86f, 12.56f)
+        curveTo(16.68f, 12.56f, 17.34f, 13.22f, 17.34f, 14.03f)
+        curveTo(17.34f, 14.84f, 16.68f, 15.5f, 15.86f, 15.5f)
+        close()
+        moveTo(18.09f, 9.66f)
+        curveTo(17.26f, 9.36f, 16.41f, 9.12f, 15.56f, 8.94f)
+        curveTo(15.45f, 9.18f, 15.32f, 9.48f, 15.23f, 9.72f)
+        curveTo(14.17f, 9.54f, 13.05f, 9.54f, 11.99f, 9.72f)
+        curveTo(11.9f, 9.48f, 11.77f, 9.18f, 11.66f, 8.94f)
+        curveTo(10.8f, 9.12f, 9.96f, 9.36f, 9.13f, 9.66f)
+        curveTo(8.99f, 9.88f, 8.84f, 10.16f, 8.73f, 10.42f)
+        curveTo(7.62f, 10.81f, 6.62f, 11.3f, 5.75f, 11.86f)
+        curveTo(6.87f, 13.88f, 8.13f, 14.94f, 9.32f, 14.44f)
+        curveTo(9.51f, 14.14f, 9.68f, 13.84f, 9.84f, 13.52f)
+        curveTo(9.5f, 13.39f, 9.18f, 13.24f, 8.87f, 13.06f)
+        curveTo(8.97f, 12.99f, 9.06f, 12.9f, 9.16f, 12.83f)
+        curveTo(10.6f, 13.53f, 12.1f, 13.76f, 13.62f, 13.5f)
+        curveTo(14.42f, 13.36f, 15.17f, 13.12f, 15.88f, 12.77f)
+        curveTo(15.97f, 12.84f, 16.06f, 12.93f, 16.16f, 13.0f)
+        curveTo(15.85f, 13.18f, 15.53f, 13.33f, 15.2f, 13.46f)
+        curveTo(15.36f, 13.78f, 15.53f, 14.08f, 15.72f, 14.38f)
+        curveTo(16.92f, 14.87f, 18.17f, 13.82f, 19.31f, 11.79f)
+        curveTo(18.42f, 11.23f, 17.42f, 10.74f, 16.31f, 10.35f)
+        curveTo(16.21f, 10.1f, 16.12f, 9.88f, 16.0f, 9.66f)
+        lineTo(18.09f, 9.66f)
+        close()
+    }.build()
+}
+
 @Composable
-fun SettingsScreen(services: PlexApp.Services, vm: AuthViewModel, onSignedOut: () -> Unit) {
+fun SettingsScreen(services: PlexApp.Services, vm: AuthViewModel, onSignedOut: () -> Unit, onOpenOffline: () -> Unit) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val offlineVersion by services.offline.version.collectAsState()
@@ -58,12 +120,16 @@ fun SettingsScreen(services: PlexApp.Services, vm: AuthViewModel, onSignedOut: (
 
     var showProfile by remember { mutableStateOf(false) }
     var showQr by remember { mutableStateOf(false) }
+    var showPicker by remember { mutableStateOf(false) }
     var dark by remember { mutableStateOf(services.session.themeMode != "light") }
     var accent by remember { mutableStateOf(services.session.accentHex) }
 
     fun setTheme(newDark: Boolean, accentHex: String) {
         services.session.themeMode = if (newDark) "dark" else "light"
         services.session.accentHex = accentHex
+        // Push to reactive state so the theme recomposes immediately (no restart).
+        services.themeMode.value = if (newDark) "dark" else "light"
+        services.accentHex.value = accentHex
         dark = newDark
         accent = accentHex
     }
@@ -117,6 +183,10 @@ fun SettingsScreen(services: PlexApp.Services, vm: AuthViewModel, onSignedOut: (
                             .clickable { setTheme(dark, hex) },
                     )
                 }
+                Spacer(Modifier.width(8.dp))
+                TextButton(onClick = { showPicker = true }) {
+                    Text("Custom", color = PlexAccent)
+                }
             }
         }
 
@@ -135,14 +205,22 @@ fun SettingsScreen(services: PlexApp.Services, vm: AuthViewModel, onSignedOut: (
 
         Spacer(Modifier.height(24.dp))
 
-        OutlinedButton(
+        Button(
             onClick = {
                 val i = android.content.Intent(android.content.Intent.ACTION_VIEW)
                 i.data = android.net.Uri.parse("https://discord.gg/AQEUbdPX6p")
                 runCatching { context.startActivity(i) }
             },
             modifier = Modifier.fillMaxWidth(),
-        ) { Text("Join the Discord") }
+            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF5865F2),
+                contentColor = Color.White,
+            ),
+        ) {
+            Icon(discordLogo, contentDescription = null, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Contact Support", fontWeight = FontWeight.Bold)
+        }
 
         Spacer(Modifier.height(24.dp))
 
@@ -151,9 +229,15 @@ fun SettingsScreen(services: PlexApp.Services, vm: AuthViewModel, onSignedOut: (
             "${offlineSongs.size} song${if (offlineSongs.size != 1) "s" else ""} · ${services.offline.size()} stored",
             style = MaterialTheme.typography.bodyMedium,
         )
+        OutlinedButton(
+            onClick = onOpenOffline,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 12.dp),
+        ) { Text("Manage offline downloads") }
         if (offlineSongs.isNotEmpty()) {
             OutlinedButton(
-                onClick = { scope.launch { runCatching { services.offline.deleteAll() } } },
+                onClick = { scope.launch { services.offline.deleteAll() } },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 12.dp),
@@ -188,6 +272,16 @@ fun SettingsScreen(services: PlexApp.Services, vm: AuthViewModel, onSignedOut: (
     }
     if (showQr) {
         QrLinkDialog(services, vm) { showQr = false }
+    }
+    if (showPicker) {
+        me.plexs.music.ui.components.ColorPickerDialog(
+            initialColor = me.plexs.music.ui.theme.accentColor(services.session.accentHex),
+            onPick = { hex ->
+                setTheme(dark, hex)
+                showPicker = false
+            },
+            onDismiss = { showPicker = false },
+        )
     }
 }
 
@@ -231,27 +325,36 @@ private fun ProfileEditDialog(services: PlexApp.Services, vm: AuthViewModel, onD
 
 @Composable
 private fun QrLinkDialog(services: PlexApp.Services, vm: AuthViewModel, onDismiss: () -> Unit) {
-    var linking by remember { mutableStateOf(false) }
+    val linking = vm.loading
+    val ctx = LocalContext.current
     var msg by remember { mutableStateOf<String?>(null) }
     androidx.compose.material3.AlertDialog(
-        onDismissRequest = { if (!linking) onDismiss() },
+        onDismissRequest = { onDismiss() },
         containerColor = MaterialTheme.colorScheme.surface,
         title = { Text("Link to desktop") },
         text = {
-            if (linking) {
-                Text("Linking…", color = PlexMuted)
-            } else {
-                msg?.let { Text(it, color = PlexMuted); Spacer(Modifier.height(8.dp)) }
-                Box(Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(12.dp))) {
-                    QrScanner(onToken = { token ->
-                        linking = true
-                        vm.qrScan(token) { onDismiss() }
-                    }, onError = { err -> msg = err })
+            when {
+                linking -> Text("Linking…", color = PlexMuted)
+                else -> {
+                    (vm.error ?: msg)?.let { Text(it, color = PlexMuted); Spacer(Modifier.height(8.dp)) }
+                    Box(Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(12.dp))) {
+                        QrScanner(
+                            onToken = { token ->
+                                msg = null
+                                vm.qrScan(token) {
+                                    // Link succeeded — pull the desktop account's playlists/stats now.
+                                    PlaybackController.refresh(ctx)
+                                    onDismiss()
+                                }
+                            },
+                            onError = { err -> msg = err },
+                        )
+                    }
                 }
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onClick = { if (!linking) onDismiss() }) { Text("Close") } },
+        dismissButton = { TextButton(enabled = !linking, onClick = onDismiss) { Text("Close") } },
     )
 }
 

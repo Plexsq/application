@@ -26,10 +26,9 @@ sealed class DownloadState {
  * download) and an application-scoped coroutine scope, so downloads keep running
  * and reporting progress across navigation and screen teardown.
  */
-class DownloadManager(context: Context) {
+class DownloadManager(private val offline: OfflineRepository) {
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val offline = OfflineRepository(context)
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)

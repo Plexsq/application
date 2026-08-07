@@ -1,7 +1,9 @@
 package me.plexs.music.innertube
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.selects.select
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -20,10 +22,18 @@ class InnertubeResolver {
 
     suspend fun resolve(videoId: String, innertubeKey: String, clients: List<InnertubeClient>): Stream? =
         withContext(Dispatchers.IO) {
-            for (client in clients) {
-                runCatching { resolveWith(client, videoId, innertubeKey) }
-                    .getOrNull()
-                    ?.let { return@withContext it }
+            // Resolve every client in parallel (async) so a slow/banned first client
+            // doesn't burn the whole budget sequentially — whichever succeeds first wins.
+            val deferreds = clients.map { client ->
+                async { runCatching { resolveWith(client, videoId, innertubeKey) }.getOrNull() }
+            }
+            val pending = deferreds.toMutableList()
+            while (pending.isNotEmpty()) {
+                val result = select<Stream?> {
+                    pending.forEach { d -> d.onAwait { it } }
+                }
+                if (result != null) return@withContext result
+                pending.removeAll { it.isCompleted }
             }
             null
         }

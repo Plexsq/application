@@ -3,11 +3,17 @@ package me.plexs.music.playback
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.os.Bundle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.CommandButton
 import androidx.media3.session.MediaSession
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
+import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -19,6 +25,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 import me.plexs.music.MainActivity
+import me.plexs.music.data.api.Http
 import me.plexs.music.data.api.Song
 
 object PlaybackController {
@@ -241,14 +248,18 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
     private var innertubeKey: String? = null
     private var innertubeClients: List<me.plexs.music.data.api.InnertubeClient>? = null
 
-    suspend fun directResolve(id: String): String? {
-        if (innertubeKey == null || innertubeClients == null) {
-            runCatching {
-                val cfg = (contextRef?.applicationContext as? me.plexs.music.PlexApp)?.services?.config?.config()
-                innertubeKey = cfg?.innertubeKey
-                innertubeClients = cfg?.innertubeClients
-            }
+    /** Fetches innertube key/clients from config once (off-thread), never throwing. */
+    private suspend fun ensureConfigLoaded() {
+        if (innertubeKey != null && innertubeClients != null) return
+        runCatching {
+            val cfg = (contextRef?.applicationContext as? me.plexs.music.PlexApp)?.services?.config?.config()
+            innertubeKey = cfg?.innertubeKey
+            innertubeClients = cfg?.innertubeClients
         }
+    }
+
+    suspend fun directResolve(id: String): String? {
+        ensureConfigLoaded()
         val key = innertubeKey ?: return null
         val clients = innertubeClients ?: return null
         if (clients.isEmpty()) return null
@@ -287,10 +298,58 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
         )
         val s = MediaSession.Builder(context, exo)
             .setSessionActivity(activityIntent)
+            .setCallback(object : MediaSession.Callback {
+                override fun onConnect(
+                    session: MediaSession,
+                    controller: MediaSession.ControllerInfo,
+                ): MediaSession.ConnectionResult {
+                    // Expose shuffle & repeat as custom session commands so they appear
+                    // as notification media buttons on supported Android versions.
+                    val custom = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
+                        .add(SessionCommand(PlaybackService.CMD_SHUFFLE, Bundle.EMPTY))
+                        .add(SessionCommand(PlaybackService.CMD_REPEAT, Bundle.EMPTY))
+                        .build()
+                    return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+                        .setAvailableSessionCommands(custom)
+                        .setMediaButtonPreferences(listOf(shuffleButton(), repeatButton()))
+                        .build()
+                }
+
+                override fun onCustomCommand(
+                    session: MediaSession,
+                    controller: MediaSession.ControllerInfo,
+                    customCommand: SessionCommand,
+                    args: Bundle,
+                ): ListenableFuture<SessionResult> {
+                    when (customCommand.customAction) {
+                        PlaybackService.CMD_SHUFFLE -> toggleShuffle()
+                        PlaybackService.CMD_REPEAT -> cycleRepeat()
+                    }
+                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
+            })
             .build()
         session = s
         ensureServiceStarted(context)
         return s
+    }
+
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    private fun shuffleButton(): CommandButton {
+        return CommandButton.Builder(if (_shuffle.value) CommandButton.ICON_SHUFFLE_ON else CommandButton.ICON_SHUFFLE_OFF)
+            .setDisplayName("Shuffle")
+            .setSessionCommand(SessionCommand(PlaybackService.CMD_SHUFFLE, Bundle.EMPTY))
+            .setEnabled(true)
+            .build()
+    }
+
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    private fun repeatButton(): CommandButton {
+        return CommandButton.Builder(if (_repeat.value >= 2) CommandButton.ICON_REPEAT_ALL else CommandButton.ICON_REPEAT_ONE)
+            .setDisplayName("Repeat")
+            .setSessionCommand(SessionCommand(PlaybackService.CMD_REPEAT, Bundle.EMPTY))
+            .setEnabled(true)
+            .build()
     }
 
     fun play(context: Context, url: String, title: String, artist: String?) {
@@ -327,9 +386,23 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
         scope.launch(Dispatchers.IO) {
             val offline = offlineRepo
             val downloaded = offline != null && offline.isDownloaded(id)
-            if (!downloaded) directResolve(id) // cache innertubeKey/Clients + warm any proxy cache
+            if (!downloaded) {
+                directResolve(id) // cache innertubeKey/Clients + warm the innertube stream
+                // Warm the server proxy too so a fallback is cached, not cold.
+                runCatching { warmProxy(id) }
+            }
         }
         while (preResolved.size > 64) preResolved.remove(preResolved.iterator().next())
+    }
+
+    /** Pokes the proxy stream endpoint so its server-side resolution is cached before it's needed. */
+    private fun warmProxy(id: String) {
+        val req = okhttp3.Request.Builder()
+            .url("https://music.plexs.me/api/embed/stream/" + id)
+            .header("Range", "bytes=0-0")
+            .header("Connection", "close")
+            .build()
+        Http.client.newCall(req).execute().use { }
     }
 
     fun playPause() {
@@ -443,6 +516,9 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
     fun restore(context: Context) {
         offlineRepo = (context.applicationContext as me.plexs.music.PlexApp).services.offline
         playlistsStore = (context.applicationContext as me.plexs.music.PlexApp).services.playlists
+        // Warm the innertube config early so the first play doesn't burn its resolve
+        // budget fetching app config for the first time.
+        warmConfig()
         val s = me.plexs.music.data.session.SessionStore(context)
         if (!s.isSignedIn) return
         repo = me.plexs.music.data.api.UserDataRepository(s)
@@ -452,6 +528,11 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
             mergeServerData(d)
         }
         watchPlaylistWrites()
+    }
+
+    /** Loads the innertube key/clients off the main thread so they're ready before first play. */
+    private fun warmConfig() {
+        scope.launch(Dispatchers.IO) { ensureConfigLoaded() }
     }
 
     @Volatile

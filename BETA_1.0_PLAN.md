@@ -1,6 +1,7 @@
 # PLEX MOBILE — BETA 1.0 · FINALIZED PLAN
 
-Status: ALL PHASES COMPLETE (2026-08-07). Phase 1-7 code done + compiles; Phase 8 icon generated (adaptive foreground from logo via sharp, verified in debug+release APKs); emulator smoke test clean (app installs/launches, no crashes); release build passes R8/minify.
+Status: ALL PHASES COMPLETE (2026-08-07). Phases 1-8 code done + compiles; Phase 9 on-VPS device testing done (Android SDK + emulator `plex35` on VPS, debug + release APKs installed, app launches to foreground, no crashes/ANRs, screenshots captured). Icon generated (adaptive foreground from logo via sharp, verified in debug+release APKs); release build passes R8/minify.
+BETA-1.1 (post-BETA-1.0 bug pass): account-link freshness (getSession writes back user, splash clears stale token, QR dialog closable + error surfaced), parallel innertube resolve + config preload + proxy pre-warm (faster start), seek/garbage + header inset + active-line lyrics, PullToRefresh, open-playlist popup, playlist server-merge, Home = playlists only, offline plays without restart + Offline screen in Settings, MediaSessionService notification (Spotify-style controls + seekbar), live theme/accent + hand-built color picker, Discord support button, in-app update progress bar. Desktop: QR auto-renews on expiry while panel open.
 Local SDK installed on VPS — compile via `./gradlew assembleDebug` locally (see AGENTS.md). No Android SDK on VPS → compile/APK via GitHub Actions `release.yml` (tag `BETA-X.Y`).
 
 ## Locked decisions
@@ -91,10 +92,11 @@ Local SDK installed on VPS — compile via `./gradlew assembleDebug` locally (se
 - Tag `BETA-1.0` → versionName 1.0, versionCode 100 → workflow builds signed APK + GitHub release + delta patch + update-manifest.json.
 - Verify: bootstrap reports 1.0; APK 200; install; walk through all 27 fixes.
 
-### Phase 9 — On-VPS device testing (new)
+### Phase 9 — On-VPS device testing (new) ✅ DONE
 - Emulator + system image installed on VPS: `sdkmanager "emulator" "system-images;android-35;google_apis;x86_64"`. KVM confirmed at /dev/kvm → hardware-accelerated x86_64 headless AVD.
 - Create AVD, boot headless (`-no-window -no-audio -gpu swiftshader_indirect`), install debug APK via adb, grab `adb exec-out screencap` for the icon + each screen, run logcat + dumpsys to verify: launcher icon renders (not the robot), notification shows SeekBar/art/controls on top, playback starts, tabs swipe, downloads survive navigation, stats POSTs fire, no crashes.
 - This replaces blind-release: only tag BETA-1.0 after the on-device pass is green. Keeps the manual test matrix (below) as the final human pass.
+- **Actual result**: AVD `plex35` booted headless; debug APK + release v1.0 APK both `adb install` cleanly; MainActivity reaches foreground top-resumed; NO FATAL EXCEPTION / ANR in logcat. What this model CANNOT verify visually (image input unsupported): launcher icon appearance, screen layout, media-notification art/controls, playback rendering, tab swipe feel. Those need the human eyeball of `shot_*.png` + the manual test matrix below (still open).
 
 ## Manual test matrix (post-install)
 Play start time · download survives tab switches + progress · swipe tabs · active-tab no-op · long-press playlist menu · share · lyrics · media notification (seekbar/art/controls on top) · stats match desktop · playlist sync both directions · QR link from Google-OAuth desktop · theme/accent · profile edit · Discord button · memory stability.

@@ -17,8 +17,18 @@ class AuthRepository(private val store: SessionStore) {
     suspend fun getSession(): AuthState = withContext(Dispatchers.IO) {
         if (!store.isSignedIn) return@withContext AuthState()
         Http.get("$base/api/auth/get-session", store.cookie()).use { resp ->
-            if (!resp.isSuccessful) AuthState()
-            else Http.json.decodeFromString<AuthState>(resp.body!!.string())
+            if (!resp.isSuccessful) {
+                if (resp.code == 401) {
+                    // Token is invalid/expired — drop it so we don't keep trusting a stale account.
+                    store.clear()
+                }
+                AuthState()
+            } else {
+                val state = Http.json.decodeFromString<AuthState>(resp.body!!.string())
+                // Keep the cached user profile in sync so cold-start reflects the real account.
+                state.user?.let { store.user = it }
+                state
+            }
         }
     }
 

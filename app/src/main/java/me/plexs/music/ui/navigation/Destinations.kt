@@ -12,6 +12,7 @@ object Destinations {
     const val RECENTS = "recents"
     const val SETTINGS = "settings"
     const val NOW_PLAYING = "now_playing"
+    const val OFFLINE = "offline"
 
     val CATEGORIES = listOf(HOME, SEARCH, LIKED, RECENTS, SETTINGS)
 }

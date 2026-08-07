@@ -45,7 +45,11 @@ class PlexApp : Application() {
         val userData = me.plexs.music.data.api.UserDataRepository(session)
         val stats = me.plexs.music.data.api.StatsRepository(session)
         val offline = me.plexs.music.data.offline.OfflineRepository(context)
-        val downloads = me.plexs.music.data.offline.DownloadManager(context)
+        val downloads = me.plexs.music.data.offline.DownloadManager(offline)
         val playlists = me.plexs.music.data.playlists.PlaylistStore(context)
+
+        // Reactive theme state so Light/Dark + accent apply live without a restart.
+        val themeMode = kotlinx.coroutines.flow.MutableStateFlow(session.themeMode)
+        val accentHex = kotlinx.coroutines.flow.MutableStateFlow(session.accentHex)
     }
 }
