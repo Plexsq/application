@@ -70,7 +70,7 @@ import me.plexs.music.ui.theme.PlexMuted
 import me.plexs.music.ui.theme.PlexSurfaceVariant
 
 @Composable
-fun SearchScreen(services: PlexApp.Services) {
+fun SearchScreen(services: PlexApp.Services, onOpenCatalog: (type: String, id: String) -> Unit = { _, _ -> }) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -324,7 +324,7 @@ fun SearchScreen(services: PlexApp.Services) {
                                 thumbnail = artist.thumbnail,
                                 title = artist.name ?: artist.title ?: "",
                                 subtitle = artist.subscribers?.let { "$it subscribers" },
-                                onClick = {},
+                                onClick = { onOpenCatalog("artist", artist.id) },
                             )
                         }
                         if (r.artists.size > 1) {
@@ -340,6 +340,19 @@ fun SearchScreen(services: PlexApp.Services) {
                                     )
                                 }
                             }
+                        }
+                    }
+                    if (r.albums.isNotEmpty()) {
+                        item {
+                            SectionTitle("Albums")
+                        }
+                        items(r.albums) { album ->
+                            CardRow(
+                                thumbnail = album.thumbnail,
+                                title = album.title ?: album.name ?: "",
+                                subtitle = album.artist?.let { it + (album.year?.let { y -> " · $y" } ?: "") },
+                                onClick = { onOpenCatalog("album", album.id) },
+                            )
                         }
                     }
                     if (songs.isNotEmpty()) {
@@ -394,7 +407,7 @@ fun SearchScreen(services: PlexApp.Services) {
                                 thumbnail = pl.thumbnail,
                                 title = pl.title ?: pl.name ?: "",
                                 subtitle = pl.author?.let { "$it · ${pl.itemCount ?: "?"} tracks" },
-                                onClick = {},
+                                onClick = { onOpenCatalog("playlist", pl.id) },
                                 downloaded = pl.id in downloadedPlaylists,
                                 downloading = pl.id in downloading,
                                 onDownload = { downloadPlaylist(pl) },

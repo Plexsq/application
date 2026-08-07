@@ -148,7 +148,9 @@ class MainActivity : ComponentActivity() {
                                         val idx = CategoryTabs.indexOfFirst { it.first == dest }
                                         if (idx >= 0) selectPage(idx) else navController.navigate(dest)
                                     })
-                                    1 -> SearchScreen(services)
+                                    1 -> SearchScreen(services, onOpenCatalog = { type, id ->
+                                        navController.navigate("catalog/$type/" + java.net.URLEncoder.encode(id, "UTF-8"))
+                                    })
                                     2 -> LikedScreen(services)
                                     3 -> RecentsScreen(services)
                                     4 -> SettingsScreen(services, authVm, onSignedOut = {
@@ -169,6 +171,22 @@ class MainActivity : ComponentActivity() {
                     }
                     composable(Destinations.OFFLINE) {
                         me.plexs.music.ui.screens.offline.OfflineScreen(services)
+                    }
+                    composable(
+                        route = "catalog/{type}/{id}",
+                        arguments = listOf(
+                            androidx.navigation.navArgument("type") { type = androidx.navigation.NavType.StringType },
+                            androidx.navigation.navArgument("id") { type = androidx.navigation.NavType.StringType },
+                        ),
+                    ) { entry ->
+                        val type = entry.arguments?.getString("type") ?: "playlist"
+                        val id = entry.arguments?.getString("id") ?: ""
+                        me.plexs.music.ui.screens.detail.CatalogDetailScreen(
+                            services = services,
+                            type = type,
+                            id = id,
+                            onBack = { navController.popBackStack() },
+                        )
                     }
                 }
             }

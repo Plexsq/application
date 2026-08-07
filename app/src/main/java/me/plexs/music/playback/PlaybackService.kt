@@ -30,6 +30,13 @@ class PlaybackService : MediaSessionService() {
         super.onBind(intent)
 
     override fun onStartCommand(intent: android.content.Intent?, flags: Int, startId: Int): Int {
+        // Add the controller's session to this service the moment it exists. media3 only
+        // foregrounds the media notification for sessions that are ADDED to the service;
+        // onCreate() may run before the session is created (null), so (re)attach here on
+        // every start so the MediaStyle notification with transport controls appears.
+        PlaybackController.session?.let { s ->
+            if (!isSessionAdded(s)) addSession(s)
+        }
         // Shuffle/repeat/more came through as the ACTION_* intents before the MediaSession
         // takeover; now they ride the session's media buttons instead. Keep them for forward
         // compatibility in case an old PendingIntent still pokes the service.
