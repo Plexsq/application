@@ -14,8 +14,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import me.plexs.music.MainActivity
 import me.plexs.music.data.api.Song
 
@@ -73,6 +75,14 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
     @Volatile
     private var offlineRepo: me.plexs.music.data.offline.OfflineRepository? = null
 
+    @Volatile
+    private var playlistsStore: me.plexs.music.data.playlists.PlaylistStore? = null
+
+    private val _playtime = MutableStateFlow(me.plexs.music.data.api.PlaytimeData())
+    val playtime: StateFlow<me.plexs.music.data.api.PlaytimeData> = _playtime
+
+    private val playCounts = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
     private val _currentTime = MutableStateFlow(0L)
     val currentTime: StateFlow<Long> = _currentTime
 
@@ -89,6 +99,39 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
         _queue.value = songs2
         _queueIndex.value = index2
         playAt(context.applicationContext, index2)
+    }
+
+    /** Queues a list of songs to play immediately after the current track. */
+    fun playNext(context: android.content.Context?, songs: List<Song>) {
+        val q = _queue.value.toMutableList()
+        val idx = _queueIndex.value.coerceAtLeast(0)
+        if (idx > q.size) return
+        val fresh = songs.filter { s -> s.id.isNotEmpty() && !q.any { it.id == s.id } }
+        q.addAll(idx + 1, fresh)
+        contextRef = context?.applicationContext ?: contextRef
+        _queue.value = q
+        scheduleUserDataSave()
+    }
+
+    /** Appends songs to the end of the queue. */
+    fun addToQueue(context: android.content.Context?, songs: List<Song>) {
+        val q = _queue.value.toMutableList()
+        val fresh = songs.filter { s -> s.id.isNotEmpty() && !q.any { it.id == s.id } }
+        q.addAll(fresh)
+        contextRef = context?.applicationContext ?: contextRef
+        _queue.value = q
+        scheduleUserDataSave()
+    }
+
+    /** Removes a queued song by id. */
+    fun removeFromQueue(id: String) {
+        val q = _queue.value.toMutableList()
+        val rmIdx = q.indexOfFirst { it.id == id }
+        if (rmIdx < 0) return
+        q.removeAt(rmIdx)
+        _queue.value = q
+        if (rmIdx < _queueIndex.value) _queueIndex.value -= 1
+        scheduleUserDataSave()
     }
 
     private fun normalizeForShuffle(songs: List<Song>, index: Int): Pair<List<Song>, Int> {
@@ -159,24 +202,57 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
     }
 
     private fun playAt(ctx: android.content.Context?, index: Int) {
-        val q = _queue.value
         val ctx2 = ctx ?: contextRef ?: return
-        if (index < 0 || index >= q.size) return
+        if (index < 0 || index >= _queue.value.size) return
         _queueIndex.value = index
-        val song = q[index]
+        val song = _queue.value[index]
         recordRecentlyPlayed(song)
-        val url = resolveStreamUrl(song.id)
         _playing.value = false
-        play(ctx2, url, song.title, song.artist)
+        resolveAndPlay(ctx2, song)
     }
 
-    private fun resolveStreamUrl(id: String): String {
+    /** Resolves a playable URL then hands it to ExoPlayer. Offline → direct-on-device → proxy. */
+    private fun resolveAndPlay(ctx: android.content.Context, song: Song) {
+        scope.launch {
+            val url = resolveStreamUrl(song.id)
+            play(ctx, url, song.title, song.artist)
+        }
+    }
+
+    /**
+     * Source priority: offline copy → on-device innertube (direct googlevideo, ~6s cap)
+     * → server proxy. The device resolve is ~3s vs the cold proxy chain which can take
+     * multiple round-trips, so this is the main "songs start fast" fix.
+     */
+    private suspend fun resolveStreamUrl(id: String): String {
         val offline = offlineRepo
         if (offline != null && offline.isDownloaded(id)) {
             val f = java.io.File(offline.offlineDir(), id + ".m4a")
             if (f.exists()) return f.toURI().toString()
         }
+        val url = withTimeoutOrNull(6000) {
+            directResolve(id)
+        }
+        if (url != null && url.isNotEmpty()) return url
         return "https://music.plexs.me/api/embed/stream/" + id
+    }
+
+    private val resolver = me.plexs.music.innertube.InnertubeResolver()
+    private var innertubeKey: String? = null
+    private var innertubeClients: List<me.plexs.music.data.api.InnertubeClient>? = null
+
+    suspend fun directResolve(id: String): String? {
+        if (innertubeKey == null || innertubeClients == null) {
+            runCatching {
+                val cfg = (contextRef?.applicationContext as? me.plexs.music.PlexApp)?.services?.config?.config()
+                innertubeKey = cfg?.innertubeKey
+                innertubeClients = cfg?.innertubeClients
+            }
+        }
+        val key = innertubeKey ?: return null
+        val clients = innertubeClients ?: return null
+        if (clients.isEmpty()) return null
+        return runCatching { resolver.resolve(id, key, clients)?.url }.getOrNull()
     }
 
     private fun recordRecentlyPlayed(song: Song) {
@@ -223,6 +299,7 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
             player ?: return
         }
         ensureServiceStarted(context)
+        preResolveNext(context)
         val item = MediaItem.Builder()
             .setUri(url)
             .setMediaMetadata(
@@ -237,6 +314,22 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
         exo.prepare()
         exo.play()
         _hasItem.value = true
+    }
+
+    private val preResolved = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    /** Backgrounds the on-device resolve for the next queued track so a skip is instant. */
+    private fun preResolveNext(context: Context) {
+        val q = _queue.value
+        val next = q.getOrNull(_queueIndex.value + 1) ?: return
+        val id = next.id
+        if (id.isEmpty() || !preResolved.add(id)) return
+        scope.launch(Dispatchers.IO) {
+            val offline = offlineRepo
+            val downloaded = offline != null && offline.isDownloaded(id)
+            if (!downloaded) directResolve(id) // cache innertubeKey/Clients + warm any proxy cache
+        }
+        while (preResolved.size > 64) preResolved.remove(preResolved.iterator().next())
     }
 
     fun playPause() {
@@ -262,6 +355,12 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
     private val autoDownloading = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private const val MIN_LISTEN_MS = 30000L
 
+    private var statsRepo: me.plexs.music.data.api.StatsRepository? = null
+    private var lastStatsMark = System.currentTimeMillis()
+    private var lastSecondsReport = 0L
+    private var pendingSeconds = 0L
+    private var lastPlayReport = 0L
+
     private fun widgetUpdaterJob() {
         if (updater?.isActive == true) return
         updater = scope.launch {
@@ -275,12 +374,48 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
                         val id = song?.id
                         if (id != null && countedPlays.add(id)) {
                             offlineRepo?.recordPlay(id)
+                            recordPlayCount(id)
                             maybeAutoDownload(song)
+                            reportPlay(song)
                         }
+                        accumulateStats()
                     }
                 }
                 kotlinx.coroutines.delay(500)
             }
+        }
+    }
+
+    private fun reportPlay(song: Song) {
+        val now = System.currentTimeMillis()
+        if (now - lastPlayReport < 3000) return
+        lastPlayReport = now
+        val repo = statsRepo
+        val r = repo ?: run {
+            statsRepo = (contextRef as? android.content.Context)
+                ?.let { (it.applicationContext as me.plexs.music.PlexApp).services.stats }
+            statsRepo
+        }
+        r?.let { scope.launch { it.reportPlay(song) } }
+    }
+
+    private fun accumulateStats() {
+        val now = System.currentTimeMillis()
+        val step = now - lastStatsMark
+        lastStatsMark = now
+        if (step in 1..2000) pendingSeconds += step
+        if (now - lastSecondsReport >= 60000 && pendingSeconds > 0) {
+            lastSecondsReport = now
+            val secs = pendingSeconds
+            pendingSeconds = 0
+            recordPlaytime(secs / 1000)
+            val repo = statsRepo
+            val r = repo ?: run {
+                statsRepo = (contextRef as? android.content.Context)
+                    ?.let { (it.applicationContext as me.plexs.music.PlexApp).services.stats }
+                statsRepo
+            }
+            r?.let { scope.launch { it.reportSeconds(secs / 1000) } }
         }
     }
 
@@ -290,13 +425,12 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
         if (offline.isDownloaded(id)) return
         if (offline.playCount(id) < 3) return
         if (!autoDownloading.add(id)) return
-        scope.launch(Dispatchers.IO) {
-            offline.download(song)
-        }
+        (contextRef?.applicationContext as? me.plexs.music.PlexApp)?.services?.downloads?.download(song)
     }
 
     fun release() {
         saveUserDataNow()
+        playlistSyncJob?.cancel()
         scope.coroutineContext[Job]?.cancel()
         session?.release()
         player?.release()
@@ -308,19 +442,63 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
 
     fun restore(context: Context) {
         offlineRepo = (context.applicationContext as me.plexs.music.PlexApp).services.offline
+        playlistsStore = (context.applicationContext as me.plexs.music.PlexApp).services.playlists
         val s = me.plexs.music.data.session.SessionStore(context)
         if (!s.isSignedIn) return
         repo = me.plexs.music.data.api.UserDataRepository(s)
         repoSave?.cancel()
         repoSave = scope.launch {
             val d = repo?.fetch() ?: return@launch
-            if (d.favorites.isNotEmpty()) _favorites.value = d.favorites
-            if (d.recentlyPlayed.isNotEmpty()) _recentlyPlayed.value = d.recentlyPlayed
-            if (d.queue.isNotEmpty()) {
-                _queue.value = d.queue
-                _queueIndex.value = if (d.queueIndex in d.queue.indices) d.queueIndex else 0
+            mergeServerData(d)
+        }
+        watchPlaylistWrites()
+    }
+
+    @Volatile
+    private var playlistSyncJob: Job? = null
+
+    private fun watchPlaylistWrites() {
+        playlistsStore?.let { store ->
+            playlistSyncJob?.cancel()
+            playlistSyncJob = scope.launch {
+                store.version.collect { scheduleUserDataSave() }
             }
         }
+    }
+
+    /** Debounced ~1s refresh: re-fetch and re-merge server data (favorites, recents, playlists, stats). */
+    fun refresh(context: Context) {
+        offlineRepo = (context.applicationContext as me.plexs.music.PlexApp).services.offline
+        playlistsStore = (context.applicationContext as me.plexs.music.PlexApp).services.playlists
+        val s = me.plexs.music.data.session.SessionStore(context)
+        if (!s.isSignedIn) return
+        repo = me.plexs.music.data.api.UserDataRepository(s)
+        repoSave?.cancel()
+        repoSave = scope.launch {
+            delay(1000)
+            val d = repo?.fetch() ?: return@launch
+            mergeServerData(d)
+        }
+        watchPlaylistWrites()
+    }
+
+    /** Merges fetched server data, keeping non-empty local values when the server side is empty. */
+    private fun mergeServerData(d: me.plexs.music.data.api.UserData) {
+        if (d.favorites.isNotEmpty()) _favorites.value = d.favorites
+        if (d.recentlyPlayed.isNotEmpty()) _recentlyPlayed.value = d.recentlyPlayed
+        if (d.queue.isNotEmpty()) {
+            _queue.value = d.queue
+            _queueIndex.value = if (d.queueIndex in d.queue.indices) d.queueIndex else 0
+        }
+        playlistsStore?.syncFromServer(d.playlists)
+        if (d.playtime.daily > 0 || d.playtime.monthly > 0) {
+            val cur = _playtime.value
+            _playtime.value = me.plexs.music.data.api.PlaytimeData(
+                daily = maxOf(cur.daily, d.playtime.daily),
+                monthly = maxOf(cur.monthly, d.playtime.monthly),
+            )
+        }
+        d.play_counts.forEach { (id, c) -> playCounts.merge(id, c) { a, b -> maxOf(a, b) } }
     }
 
     @Volatile
@@ -341,10 +519,39 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
             queueIndex = _queueIndex.value,
             favorites = _favorites.value,
             recentlyPlayed = _recentlyPlayed.value,
+            playlists = playlistsStore?.list()?.map {
+                me.plexs.music.data.api.UserPlaylist(
+                    id = it.id,
+                    name = it.name,
+                    image = it.image,
+                    songs = it.songs,
+                    createdAt = it.createdAt,
+                )
+            } ?: emptyList(),
+            playtime = _playtime.value,
+            play_counts = playCounts.toMap(),
         )
-        if (!d.favorites.isEmpty() || !d.recentlyPlayed.isEmpty() || !d.queue.isEmpty()) {
+        if (!d.favorites.isEmpty() || !d.recentlyPlayed.isEmpty() || !d.queue.isEmpty() || !d.playlists.isEmpty() || d.playtime.daily > 0 || d.play_counts.isNotEmpty()) {
             scope.launch { r.save(d) }
         }
+    }
+
+    /** Accumulates listen time (seconds) into the local playtime counters. */
+    fun recordPlaytime(seconds: Long) {
+        if (seconds <= 0) return
+        val cur = _playtime.value
+        _playtime.value = me.plexs.music.data.api.PlaytimeData(
+            daily = cur.daily + seconds,
+            monthly = cur.monthly + seconds,
+        )
+        scheduleUserDataSave()
+    }
+
+    /** Increments the play count for a song (matches desktop play_counts). */
+    fun recordPlayCount(id: String) {
+        if (id.isEmpty()) return
+        playCounts.merge(id, 1) { a, b -> a + b }
+        scheduleUserDataSave()
     }
 
     private fun ensureServiceStarted(context: Context) {

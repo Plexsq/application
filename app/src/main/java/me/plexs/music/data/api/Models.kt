@@ -154,12 +154,20 @@ data class SearchCard(
 )
 
 @Serializable
+data class PlaytimeData(
+    val daily: Long = 0,
+    val monthly: Long = 0,
+)
+
+@Serializable
 data class UserData(
     val queue: List<Song> = emptyList(),
     val queueIndex: Int = -1,
     val favorites: List<Song> = emptyList(),
     val recentlyPlayed: List<Song> = emptyList(),
     val playlists: List<UserPlaylist> = emptyList(),
+    val playtime: PlaytimeData = PlaytimeData(),
+    val play_counts: Map<String, Int> = emptyMap(),
 )
 
 @Serializable
@@ -173,6 +181,19 @@ data class UserPlaylist(
 
 @Serializable
 data class UserDataResp(val data: UserData = UserData())
+
+@Serializable
+data class StatsTopSong(val song: Song? = null, val plays: Int = 0)
+
+@Serializable
+data class StatsData(
+    val daily: Long = 0,
+    val monthly: Long = 0,
+    val top: List<StatsTopSong> = emptyList(),
+)
+
+@Serializable
+data class StatsResp(val stats: StatsData = StatsData())
 
 @Serializable
 data class HistoryItem(val query: String = "", val searchedAt: String = "")

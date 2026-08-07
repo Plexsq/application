@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
@@ -29,7 +31,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
@@ -78,14 +82,14 @@ class MainActivity : ComponentActivity() {
         }
         me.plexs.music.playback.PlaybackController.restore(this)
         setContent {
-            PlexTheme {
+            val session = services.session
+            val dark = session.themeMode != "light"
+            val accent = me.plexs.music.ui.theme.accentColor(session.accentHex)
+            PlexTheme(dark = dark, accent = accent) {
                 val navController = rememberNavController()
                 val authVm: AuthViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
                     factory = AuthVmFactory(services),
                 )
-                val goCategory: (String) -> Unit = { dest ->
-                    navController.navigate(dest) { launchSingleTop = true }
-                }
                 NavHost(navController, startDestination = Destinations.SPLASH) {
                     composable(Destinations.SPLASH) {
                         SplashScreen(services.session) { dest ->
@@ -96,7 +100,7 @@ class MainActivity : ComponentActivity() {
                     }
                     composable(Destinations.SIGN_IN) {
                         SignInScreen(authVm, services.config, onSignedIn = {
-                            navController.navigate(Destinations.HOME) {
+                            navController.navigate(Destinations.MAIN) {
                                 popUpTo(Destinations.SPLASH) { inclusive = true }
                             }
                         }, onForgot = {
@@ -107,7 +111,7 @@ class MainActivity : ComponentActivity() {
                     }
                     composable(Destinations.SIGN_UP) {
                         SignUpScreen(authVm) {
-                            navController.navigate(Destinations.HOME) {
+                            navController.navigate(Destinations.MAIN) {
                                 popUpTo(Destinations.SPLASH) { inclusive = true }
                             }
                         }
@@ -117,88 +121,54 @@ class MainActivity : ComponentActivity() {
                             navController.navigate(Destinations.SIGN_IN)
                         }
                     }
-                    composable(Destinations.HOME) {
-                        PlayerShell(
-                            currentRoute = Destinations.HOME,
-                            onSelectCategory = goCategory,
-                            onPlayerTap = {
-                                navController.navigate(Destinations.NOW_PLAYING) {
-                                    launchSingleTop = true
-                                }
-                            },
-                        ) {
-                            HomeScreen(services, onOpenSection = goCategory)
+                    composable(Destinations.MAIN) {
+                        val pagerState = rememberPagerState(pageCount = { CategoryTabs.size })
+                        val coroutineScope = rememberCoroutineScope()
+                        val selectPage: (Int) -> Unit = { index ->
+                            if (index != pagerState.currentPage) {
+                                coroutineScope.launch { pagerState.animateScrollToPage(index) }
+                            }
                         }
-                    }
-                    composable(Destinations.SEARCH) {
                         PlayerShell(
-                            currentRoute = Destinations.SEARCH,
-                            onSelectCategory = goCategory,
+                            selectedIndex = pagerState.currentPage,
+                            onSelect = selectPage,
                             onPlayerTap = {
                                 navController.navigate(Destinations.NOW_PLAYING) {
                                     launchSingleTop = true
                                 }
                             },
                         ) {
-                            SearchScreen(services)
-                        }
-                    }
-                    composable(Destinations.LIKED) {
-                        PlayerShell(
-                            currentRoute = Destinations.LIKED,
-                            onSelectCategory = goCategory,
-                            onPlayerTap = {
-                                navController.navigate(Destinations.NOW_PLAYING) {
-                                    launchSingleTop = true
-                                }
-                            },
-                        ) {
-                            LikedScreen(services)
-                        }
-                    }
-                    composable(Destinations.RECENTS) {
-                        PlayerShell(
-                            currentRoute = Destinations.RECENTS,
-                            onSelectCategory = goCategory,
-                            onPlayerTap = {
-                                navController.navigate(Destinations.NOW_PLAYING) {
-                                    launchSingleTop = true
-                                }
-                            },
-                        ) {
-                            RecentsScreen(services)
-                        }
-                    }
-                    composable(Destinations.SETTINGS) {
-                        PlayerShell(
-                            currentRoute = Destinations.SETTINGS,
-                            onSelectCategory = goCategory,
-                            onPlayerTap = {
-                                navController.navigate(Destinations.NOW_PLAYING) {
-                                    launchSingleTop = true
-                                }
-                            },
-                        ) {
-                            SettingsScreen(services, authVm) {
-                                navController.navigate(Destinations.SIGN_IN) {
-                                    popUpTo(Destinations.SPLASH) { inclusive = true }
+                            HorizontalPager(state = pagerState) { page ->
+                                when (page) {
+                                    0 -> HomeScreen(services, onOpenSection = { dest ->
+                                        val idx = CategoryTabs.indexOfFirst { it.first == dest }
+                                        if (idx >= 0) selectPage(idx) else navController.navigate(dest)
+                                    })
+                                    1 -> SearchScreen(services)
+                                    2 -> LikedScreen(services)
+                                    3 -> RecentsScreen(services)
+                                    4 -> SettingsScreen(services, authVm) {
+                                        navController.navigate(Destinations.SIGN_IN) {
+                                            popUpTo(Destinations.SPLASH) { inclusive = true }
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                     composable(Destinations.NOW_PLAYING) {
-                        PlayerShell(
-                            currentRoute = Destinations.SEARCH,
-                            onSelectCategory = goCategory,
-                            onPlayerTap = { navController.popBackStack() },
-                            showBottomBar = false,
-                        ) {
+                        Scaffold {
                             NowPlayingScreen(onClose = { navController.popBackStack() })
                         }
                     }
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        me.plexs.music.playback.PlaybackController.refresh(this)
     }
 }
 
@@ -209,15 +179,15 @@ class AuthVmFactory(private val services: PlexApp.Services) : ViewModelProvider.
 
 @Composable
 fun PlayerShell(
-    currentRoute: String,
-    onSelectCategory: (String) -> Unit,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
     onPlayerTap: () -> Unit,
     showBottomBar: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     Scaffold(
         topBar = {
-            CategoryBar(currentRoute = currentRoute, onSelect = onSelectCategory)
+            CategoryBar(selectedIndex = selectedIndex, onSelect = onSelect)
         },
         bottomBar = {
             if (showBottomBar) {
@@ -245,8 +215,8 @@ private val CategoryTabs = listOf(
 
 @Composable
 fun CategoryBar(
-    currentRoute: String,
-    onSelect: (String) -> Unit,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -256,8 +226,8 @@ fun CategoryBar(
             .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        CategoryTabs.forEach { (route, label) ->
-            val active = currentRoute == route
+        CategoryTabs.forEachIndexed { index, (route, label) ->
+            val active = selectedIndex == index
             val icon = when (route) {
                 Destinations.HOME -> Icons.Filled.Home
                 Destinations.SEARCH -> Icons.Filled.Search
@@ -272,7 +242,7 @@ fun CategoryBar(
                 modifier = Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(12.dp))
-                    .clickable(onClick = { onSelect(route) })
+                    .clickable(onClick = { onSelect(index) })
                     .padding(vertical = 4.dp),
             ) {
                 Icon(icon, contentDescription = label, tint = if (active) PlexAccent else PlexMuted)

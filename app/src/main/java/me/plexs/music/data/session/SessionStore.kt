@@ -64,6 +64,14 @@ class SessionStore(context: Context) {
         get() = read(KEY_GOOGLE)
         set(v) = write(KEY_GOOGLE, v)
 
+    var themeMode: String
+        get() = read(KEY_THEME) ?: "dark"
+        set(v) = write(KEY_THEME, v)
+
+    var accentHex: String
+        get() = read(KEY_ACCENT) ?: "#A855F7"
+        set(v) = write(KEY_ACCENT, v)
+
     val isSignedIn: Boolean get() = !token.isNullOrBlank()
 
     fun clear() {
@@ -77,5 +85,7 @@ class SessionStore(context: Context) {
         const val KEY_TOKEN = "p_token"
         const val KEY_USER = "user"
         const val KEY_GOOGLE = "google_account"
+        const val KEY_THEME = "theme_mode"
+        const val KEY_ACCENT = "accent_hex"
     }
 }

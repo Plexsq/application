@@ -12,6 +12,7 @@ import java.io.File
 data class UserPlaylist(
     val id: String,
     val name: String,
+    val image: String? = null,
     val songs: List<Song> = emptyList(),
     val createdAt: Long = System.currentTimeMillis(),
 )
@@ -48,6 +49,15 @@ class PlaylistStore(context: Context) {
 
     fun find(id: String): UserPlaylist? = read().playlists.firstOrNull { it.id == id }
 
+    fun rename(id: String, name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return
+        val data = read()
+        write(data.copy(playlists = data.playlists.map { pl ->
+            if (pl.id == id) pl.copy(name = trimmed) else pl
+        }))
+    }
+
     /** Adds a song to a playlist, ignoring duplicates by song id. */
     fun addSong(playlistId: String, song: Song) {
         val data = read()
@@ -71,6 +81,38 @@ class PlaylistStore(context: Context) {
         val data = read()
         write(data.copy(playlists = data.playlists.filterNot { it.id == playlistId }))
     }
+
+    /**
+     * Merges the server-side playlist set into local storage: adopt the server
+     * set wholesale when local is empty, otherwise union by id (keep the local
+     * copy for matches so unsaved edits win, add server-only entries).
+     */
+    fun syncFromServer(server: List<me.plexs.music.data.api.UserPlaylist>) {
+        if (server.isEmpty()) return
+        val local = read().playlists
+        val merged = if (local.isEmpty()) {
+            server.map { it.toLocal() }
+        } else {
+            val byId = local.associateBy { it.id }
+            val out = local.toMutableList()
+            for (sp in server) {
+                if (byId[sp.id] == null) out.add(sp.toLocal())
+            }
+            out
+        }
+        if (merged.map { it.id } != local.map { it.id }) {
+            write(PlaylistData(playlists = merged))
+        }
+    }
+
+    private fun me.plexs.music.data.api.UserPlaylist.toLocal(): UserPlaylist =
+        UserPlaylist(
+            id = id,
+            name = name,
+            image = image,
+            songs = songs,
+            createdAt = createdAt,
+        )
 
     private fun read(): PlaylistData {
         return try {

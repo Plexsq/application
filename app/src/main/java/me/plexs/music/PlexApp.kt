@@ -43,7 +43,9 @@ class PlexApp : Application() {
         val bootstrap = BootstrapRepository()
         val catalog = CatalogRepository(session)
         val userData = me.plexs.music.data.api.UserDataRepository(session)
+        val stats = me.plexs.music.data.api.StatsRepository(session)
         val offline = me.plexs.music.data.offline.OfflineRepository(context)
+        val downloads = me.plexs.music.data.offline.DownloadManager(context)
         val playlists = me.plexs.music.data.playlists.PlaylistStore(context)
     }
 }

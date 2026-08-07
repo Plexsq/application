@@ -3,7 +3,6 @@ package me.plexs.music.ui.screens.home
 import androidx.compose.foundation.ExperimentalFoundationApi
 import kotlin.OptIn
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
@@ -18,10 +17,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -63,6 +63,7 @@ import me.plexs.music.data.playlists.UserPlaylist
 import me.plexs.music.playback.PlaybackController
 import me.plexs.music.ui.components.CreatePlaylistDialog
 import me.plexs.music.ui.components.SongPlaylistPickerDialog
+import me.plexs.music.ui.components.PlaylistContextMenu
 import me.plexs.music.ui.navigation.Destinations
 import me.plexs.music.ui.screens.search.SongRow
 import me.plexs.music.ui.theme.PlexAccent
@@ -91,16 +92,21 @@ fun HomeScreen(services: PlexApp.Services, onOpenSection: (String) -> Unit) {
         .map { it.song }
 
     var showCreate by remember { mutableStateOf(false) }
-    var deletePl by remember { mutableStateOf<UserPlaylist?>(null) }
+    var menuPl by remember { mutableStateOf<UserPlaylist?>(null) }
     var addTarget by remember { mutableStateOf<Song?>(null) }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxWidth()) {
-            item {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 32.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 4.dp),
+                        .padding(bottom = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
@@ -117,62 +123,50 @@ fun HomeScreen(services: PlexApp.Services, onOpenSection: (String) -> Unit) {
                 }
             }
             item {
-                Spacer(Modifier.height(4.dp))
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 24.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    item {
-                        LibraryTile(
-                            thumbnail = recent.firstOrNull()?.thumbnail,
-                            icon = Icons.Default.History,
-                            label = "Recently Played",
-                            sub = "${recent.size} song${if (recent.size != 1) "s" else ""}",
-                            onClick = { onOpenSection(Destinations.RECENTS) },
-                        )
-                    }
-                    item {
-                        LibraryTile(
-                            thumbnail = favorites.firstOrNull()?.thumbnail,
-                            icon = Icons.Default.Favorite,
-                            label = "Liked Songs",
-                            sub = "${favorites.size} song${if (favorites.size != 1) "s" else ""}",
-                            onClick = { onOpenSection(Destinations.LIKED) },
-                        )
-                    }
-                    item {
-                        LibraryTile(
-                            thumbnail = null,
-                            icon = Icons.Default.Download,
-                            label = "Offline",
-                            sub = "${allOffline.size} song${if (allOffline.size != 1) "s" else ""}",
-                            onClick = { },
-                            accent = false,
-                        )
-                    }
-                    items(playlists) { pl ->
-                        LibraryTile(
-                            thumbnail = pl.songs.firstOrNull()?.thumbnail ?: "",
-                            icon = if (pl.songs.isEmpty()) Icons.Default.PlaylistAdd else null,
-                            label = pl.name,
-                            sub = "${pl.songs.size} song${if (pl.songs.size != 1) "s" else ""}",
-                            onClick = {
-                                if (pl.songs.isNotEmpty()) {
-                                    PlaybackController.playSongs(context, pl.songs, 0)
-                                }
-                            },
-                            onLongClick = { deletePl = pl },
-                        )
-                    }
-                    item {
-                        NewPlaylistTile(onClick = { showCreate = true })
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
+                LibraryGridCard(
+                    thumbnail = recent.firstOrNull()?.thumbnail,
+                    icon = Icons.Default.History,
+                    label = "Recently Played",
+                    sub = "${recent.size} song${if (recent.size != 1) "s" else ""}",
+                    onClick = { onOpenSection(Destinations.RECENTS) },
+                )
+            }
+            item {
+                LibraryGridCard(
+                    thumbnail = favorites.firstOrNull()?.thumbnail,
+                    icon = Icons.Default.Favorite,
+                    label = "Liked Songs",
+                    sub = "${favorites.size} song${if (favorites.size != 1) "s" else ""}",
+                    onClick = { onOpenSection(Destinations.LIKED) },
+                )
+            }
+            item {
+                LibraryGridCard(
+                    thumbnail = null,
+                    icon = Icons.Default.Download,
+                    label = "Offline",
+                    sub = "${allOffline.size} song${if (allOffline.size != 1) "s" else ""}",
+                    onClick = { },
+                    accent = false,
+                )
+            }
+            items(playlists, key = { it.id }) { pl ->
+                LibraryGridCard(
+                    thumbnail = pl.songs.firstOrNull()?.thumbnail ?: "",
+                    icon = if (pl.songs.isEmpty()) Icons.Default.PlaylistAdd else null,
+                    label = pl.name,
+                    sub = "${pl.songs.size} song${if (pl.songs.size != 1) "s" else ""}",
+                    onClick = {
+                        if (pl.songs.isNotEmpty()) {
+                            PlaybackController.playSongs(context, pl.songs, 0)
+                        }
+                    },
+                    onLongClick = { menuPl = pl },
+                )
             }
             if (allOffline.isNotEmpty()) {
-                item {
-                    Column(Modifier.padding(horizontal = 24.dp)) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
                         Text(
                             "Offline",
                             style = MaterialTheme.typography.titleMedium,
@@ -184,41 +178,43 @@ fun HomeScreen(services: PlexApp.Services, onOpenSection: (String) -> Unit) {
                             color = PlexMuted,
                             fontSize = 13.sp,
                         )
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = offlineQuery,
+                            onValueChange = { offlineQuery = it },
+                            placeholder = { Text("Search offline") },
+                            leadingIcon = {
+                                Icon(Icons.Default.History, contentDescription = null)
+                            },
+                            singleLine = true,
+                            shape = RoundedCornerShape(10.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = PlexAccent,
+                                unfocusedBorderColor = PlexSurfaceVariant,
+                            ),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Spacer(Modifier.height(4.dp))
                     }
                 }
-                item {
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = offlineQuery,
-                        onValueChange = { offlineQuery = it },
-                        placeholder = { Text("Search offline") },
-                        leadingIcon = {
-                            Icon(Icons.Default.History, contentDescription = null)
-                        },
-                        singleLine = true,
-                        shape = RoundedCornerShape(10.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = PlexAccent,
-                            unfocusedBorderColor = PlexSurfaceVariant,
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 24.dp),
-                    )
-                    Spacer(Modifier.height(4.dp))
-                }
-                if (offlineSongs.isNotEmpty()) {
-                    itemsIndexed(offlineSongs) { i, song ->
+if (offlineSongs.isNotEmpty()) {
+                    items(
+                        count = offlineSongs.size,
+                        span = { GridItemSpan(maxLineSpan) },
+                    ) { i ->
                         SongRow(
-                            song = song,
+                            song = offlineSongs[i],
                             onPlay = {
                                 PlaybackController.playSongs(context, offlineSongs, i)
                             },
-                            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 6.dp),
+                            contentPadding = PaddingValues(vertical = 6.dp),
                             downloaded = true,
                             onDownload = {},
-                            onDelete = { scope.launch { offline.delete(song.id) } },
-                            onAddToPlaylist = { addTarget = song },
+                            onDelete = { scope.launch { offline.delete(offlineSongs[i].id) } },
+                            onAddToPlaylist = { addTarget = offlineSongs[i] },
+                            onPlayNext = { PlaybackController.playNext(context, listOf(offlineSongs[i])) },
+                            onAddToQueue = { PlaybackController.addToQueue(context, listOf(offlineSongs[i])) },
+                            onShare = { me.plexs.music.ui.components.shareSong(context, offlineSongs[i]) },
                         )
                     }
                 }
@@ -232,19 +228,21 @@ fun HomeScreen(services: PlexApp.Services, onOpenSection: (String) -> Unit) {
             onDismiss = { showCreate = false },
         )
     }
-    deletePl?.let { pl ->
-        AlertDialog(
-            onDismissRequest = { deletePl = null },
-            title = { Text("Delete playlist") },
-            text = { Text("Remove \"${pl.name}\"?") },
-            confirmButton = {
-                TextButton(onClick = { services.playlists.delete(pl.id); deletePl = null }) {
-                    Text("Delete", color = PlexAccent)
-                }
+    menuPl?.let { pl ->
+        PlaylistContextMenu(
+            playlist = pl,
+            onPlay = { if (pl.songs.isNotEmpty()) PlaybackController.playSongs(context, pl.songs, 0); menuPl = null },
+            onPlayNext = { PlaybackController.playNext(context, pl.songs); menuPl = null },
+            onAddToQueue = { PlaybackController.addToQueue(context, pl.songs); menuPl = null },
+            onRename = {
+                services.playlists.rename(pl.id, it)
+                menuPl = null
             },
-            dismissButton = {
-                TextButton(onClick = { deletePl = null }) { Text("Cancel") }
+            onDelete = {
+                services.playlists.delete(pl.id)
+                menuPl = null
             },
+            onDismiss = { menuPl = null },
         )
     }
     addTarget?.let { target ->
@@ -266,7 +264,7 @@ fun HomeScreen(services: PlexApp.Services, onOpenSection: (String) -> Unit) {
 
 @Composable
 @OptIn(ExperimentalFoundationApi::class)
-private fun LibraryTile(
+private fun LibraryGridCard(
     thumbnail: String?,
     icon: ImageVector?,
     label: String,
@@ -278,18 +276,16 @@ private fun LibraryTile(
     val gradient = Brush.linearGradient(
         if (accent) listOf(PlexAccent, Color(0xFF60A5FA)) else listOf(PlexSurfaceVariant, PlexSurfaceVariant),
     )
-    Row(
+    Column(
         modifier = Modifier
-            .width(120.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .clip(RoundedCornerShape(14.dp))
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
         Box(
             Modifier
-                .size(58.dp)
-                .clip(RoundedCornerShape(10.dp))
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .clip(RoundedCornerShape(14.dp))
                 .background(gradient),
             contentAlignment = Alignment.Center,
         ) {
@@ -298,50 +294,24 @@ private fun LibraryTile(
                     model = thumbnail,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(58.dp),
+                    modifier = Modifier.fillMaxWidth().aspectRatio(1f),
                 )
             } else {
                 Icon(
                     icon ?: Icons.Default.PlaylistAdd,
                     contentDescription = null,
                     tint = Color.White,
-                    modifier = Modifier.size(30.dp),
+                    modifier = Modifier.size(40.dp),
                 )
             }
         }
-        Spacer(Modifier.width(12.dp))
-        Column {
-            Text(
-                label,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(sub, color = PlexMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-    }
-}
-
-@Composable
-private fun NewPlaylistTile(onClick: () -> Unit) {
-    Box(
-        Modifier
-            .width(120.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .border(1.dp, PlexSurfaceVariant, RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
-            .padding(12.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                Icons.Default.Add,
-                contentDescription = "New playlist",
-                tint = PlexMuted,
-                modifier = Modifier.size(28.dp),
-            )
-            Spacer(Modifier.height(4.dp))
-            Text("New Playlist", color = PlexMuted, fontSize = 12.sp)
-        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            label,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(sub, color = PlexMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }

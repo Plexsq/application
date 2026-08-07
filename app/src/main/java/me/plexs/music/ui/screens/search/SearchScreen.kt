@@ -31,6 +31,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -58,6 +59,7 @@ import me.plexs.music.CrashLogger
 import me.plexs.music.PlexApp
 import me.plexs.music.data.api.SearchResults
 import me.plexs.music.data.api.Song
+import me.plexs.music.data.offline.DownloadState
 import me.plexs.music.playback.PlaybackController
 import me.plexs.music.ui.components.DownloadIconButton
 import me.plexs.music.ui.components.SongOverflowMenu
@@ -87,6 +89,7 @@ fun SearchScreen(services: PlexApp.Services) {
     var downloadedIds by remember { mutableStateOf(offline.list().map { it.song.id }.toSet()) }
     var downloadedPlaylists by remember { mutableStateOf(offline.playLists().map { it.id }.toSet()) }
     var downloading by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val downloadStates by services.downloads.states.collectAsState()
     var addTarget by remember { mutableStateOf<Song?>(null) }
     val userPlaylists by services.playlists.version.collectAsState()
 
@@ -95,22 +98,22 @@ fun SearchScreen(services: PlexApp.Services) {
         downloadedPlaylists = offline.playLists().map { it.id }.toSet()
     }
 
-    suspend fun downloadSong(song: Song) {
-        if (song.id in downloading) return
-        downloading = downloading + song.id
-        offline.download(song)
-        downloading = downloading - song.id
+    fun downloadSong(song: Song) {
+        services.downloads.download(song)
     }
 
-    suspend fun downloadPlaylist(pl: me.plexs.music.data.api.SearchCard) {
-        if (pl.id in downloading) return
+    fun downloadPlaylist(pl: me.plexs.music.data.api.SearchCard) {
+        val downloadingPl = downloading.contains(pl.id)
+        if (downloadingPl) return
         downloading = downloading + pl.id
-        runCatching {
-            val page = services.catalog.playlist(pl.id)
-            val title = page.title.ifBlank { pl.title ?: pl.name ?: pl.id }
-            offline.downloadPlayList(pl.id, title, page.items)
+        scope.launch {
+            runCatching {
+                val page = services.catalog.playlist(pl.id)
+                val title = page.title.ifBlank { pl.title ?: pl.name ?: pl.id }
+                services.downloads.downloadPlaylist(pl.id, title, page.items)
+            }
+            downloading = downloading - pl.id
         }
-        downloading = downloading - pl.id
     }
 
     LaunchedEffect(Unit) {
@@ -309,18 +312,34 @@ fun SearchScreen(services: PlexApp.Services) {
             results != null -> {
                 val r = results!!
                 val songs = r.songs
+                var showAllArtists by remember { mutableStateOf(false) }
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     if (r.artists.isNotEmpty()) {
                         item {
                             SectionTitle("Artists")
                         }
-                        items(r.artists) { artist ->
+                        val artistsToShow = if (showAllArtists) r.artists else r.artists.take(1)
+                        items(artistsToShow) { artist ->
                             CardRow(
                                 thumbnail = artist.thumbnail,
                                 title = artist.name ?: artist.title ?: "",
                                 subtitle = artist.subscribers?.let { "$it subscribers" },
                                 onClick = {},
                             )
+                        }
+                        if (r.artists.size > 1) {
+                            item {
+                                TextButton(
+                                    onClick = { showAllArtists = !showAllArtists },
+                                    modifier = Modifier.padding(start = 8.dp, top = 4.dp),
+                                ) {
+                                    Text(
+                                        if (showAllArtists) "Show less" else "Show all (${r.artists.size})",
+                                        color = PlexAccent,
+                                        fontWeight = FontWeight.Medium,
+                                    )
+                                }
+                            }
                         }
                     }
                     if (songs.isNotEmpty()) {
@@ -334,10 +353,13 @@ fun SearchScreen(services: PlexApp.Services) {
                                     PlaybackController.playSongs(context, songs, i)
                                 },
                                 downloaded = song.id in downloadedIds,
-                                downloading = song.id in downloading,
-                                onDownload = { scope.launch { downloadSong(song) } },
+                                downloading = downloadStates[song.id] is DownloadState.Downloading,
+                                onDownload = { downloadSong(song) },
                                 onDelete = { scope.launch { offline.delete(song.id) } },
                                 onAddToPlaylist = { addTarget = song },
+                                onPlayNext = { PlaybackController.playNext(context, listOf(song)) },
+                                onAddToQueue = { PlaybackController.addToQueue(context, listOf(song)) },
+                                onShare = { me.plexs.music.ui.components.shareSong(context, song) },
                             )
                         }
                     }
@@ -353,10 +375,13 @@ fun SearchScreen(services: PlexApp.Services) {
                                     PlaybackController.playSongs(context, all, songs.size + i)
                                 },
                                 downloaded = song.id in downloadedIds,
-                                downloading = song.id in downloading,
-                                onDownload = { scope.launch { downloadSong(song) } },
+                                downloading = downloadStates[song.id] is DownloadState.Downloading,
+                                onDownload = { downloadSong(song) },
                                 onDelete = { scope.launch { offline.delete(song.id) } },
                                 onAddToPlaylist = { addTarget = song },
+                                onPlayNext = { PlaybackController.playNext(context, listOf(song)) },
+                                onAddToQueue = { PlaybackController.addToQueue(context, listOf(song)) },
+                                onShare = { me.plexs.music.ui.components.shareSong(context, song) },
                             )
                         }
                     }
@@ -372,7 +397,7 @@ fun SearchScreen(services: PlexApp.Services) {
                                 onClick = {},
                                 downloaded = pl.id in downloadedPlaylists,
                                 downloading = pl.id in downloading,
-                                onDownload = { scope.launch { downloadPlaylist(pl) } },
+                                onDownload = { downloadPlaylist(pl) },
                             )
                         }
                     }
@@ -479,6 +504,9 @@ fun SongRow(
     onDownload: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
     onAddToPlaylist: (() -> Unit)? = null,
+    onPlayNext: (() -> Unit)? = null,
+    onAddToQueue: (() -> Unit)? = null,
+    onShare: (() -> Unit)? = null,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Row(
@@ -534,6 +562,9 @@ fun SongRow(
                 onDownload = onDownload ?: {},
                 onDelete = onDelete ?: {},
                 onAddToPlaylist = onAddToPlaylist ?: {},
+                onPlayNext = onPlayNext,
+                onAddToQueue = onAddToQueue,
+                onShare = onShare,
                 expanded = menuOpen,
                 onExpandedChange = { menuOpen = it },
             )

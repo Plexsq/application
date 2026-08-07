@@ -43,6 +43,19 @@ class AuthRepository(private val store: SessionStore) {
     suspend fun qrSwap(token: String): AuthResponse =
         post("$base/api/qr/swap", QrSwapRequest(token))
 
+    suspend fun updateProfile(name: String, username: String): AuthResponse =
+        withContext(Dispatchers.IO) {
+            Http.post("$base/api/profile", mapOf("name" to name.trim(), "username" to username.trim()), store.cookie()).use { r ->
+                if (!r.isSuccessful) {
+                    val msg = runCatching { Http.json.decodeFromString<ApiError>(r.body!!.string()) }.getOrNull()?.error
+                    throw ApiException(msg ?: "Profile update failed")
+                }
+                val res = Http.json.decodeFromString<AuthResponse>(r.body!!.string())
+                res.user?.let { store.user = it }
+                res
+            }
+        }
+
     suspend fun signOut() {
         withContext(Dispatchers.IO) {
             runCatching { Http.post("$base/api/auth/sign-out", mapOf("ok" to true), store.cookie()).close() }

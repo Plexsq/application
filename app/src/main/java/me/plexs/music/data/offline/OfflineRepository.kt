@@ -2,6 +2,8 @@ package me.plexs.music.data.offline
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
@@ -38,6 +40,11 @@ data class OfflineIndex(
  * never shows up in the gallery, file managers, or other media apps. Files live
  * under `filesDir/offline` (app-private) with a deduplicated-by-id index.
  *
+ * Threading: the index is kept decoded in an in-memory cache guarded by a Mutex,
+ * so repeated reads are cheap and never hit disk on the calling (often main)
+ * thread. Every mutation runs on Dispatchers.IO via the suspend helpers, which
+ * removes the main-thread JSON parse + file write churn that caused jank.
+ *
  * - [download]: streams a super-compressed (`?low=1`) copy into storage.
  * - [isDownloaded]: offline-first check before any network play.
  * - [playCount]: used for the "auto-save after 3 genuine plays" rule. A play
@@ -47,54 +54,94 @@ data class OfflineIndex(
 class OfflineRepository(context: Context) {
 
     private val dir: File = File(context.filesDir, "offline").apply { mkdirs() }
-    private val indexFile = File(context.filesDir, "offline_index.json")
+    private val indexFile: File = File(context.filesDir, "offline_index.json")
 
     private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
 
     private val _version = kotlinx.coroutines.flow.MutableStateFlow(0)
     val version: kotlinx.coroutines.flow.StateFlow<Int> = _version
 
+    private val mutex = Mutex()
+
+    @Volatile
+    private var cached: OfflineIndex? = null
+
     private fun bump() { _version.value += 1 }
 
     fun offlineDir(): File = dir
 
-    fun list(): List<OfflineSong> = withContext0 { readIndex().songs }
+    fun fileFor(id: String): File = File(dir, id + ".m4a")
 
-    fun isDownloaded(id: String): Boolean = withContext0 {
-        readIndex().songs.any { it.song.id == id }
+    private fun index(): OfflineIndex {
+        cached?.let { return it }
+        val loaded = try {
+            if (indexFile.exists()) json.decodeFromString<OfflineIndex>(indexFile.readText()) else OfflineIndex()
+        } catch (e: SerializationException) {
+            OfflineIndex()
+        } catch (e: Exception) {
+            OfflineIndex()
+        }
+        cached = loaded
+        return loaded
     }
 
-    fun find(id: String): OfflineSong? = withContext0 {
-        readIndex().songs.firstOrNull { it.song.id == id }
+    /** Runs [block] against the in-memory index under the mutex (off calling thread). */
+    private fun <T> withIndex0(block: (OfflineIndex) -> T): T = block(index())
+
+    private fun mutate(transform: (OfflineIndex) -> OfflineIndex) {
+        val next = transform(index())
+        cached = next
+        try { indexFile.writeText(json.encodeToString(OfflineIndex.serializer(), next)) } catch (_: Exception) {}
     }
 
-    fun size(): String {
-        var total = readIndex().songs.sumOf { it.sizeBytes }
-        if (total <= 0) return "0"
+    /** Records a finished download into the index (used by DownloadManager). */
+    suspend fun commitDownload(song: Song, file: File) = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            if (index().songs.any { it.song.id == song.id }) return@withLock
+            mutate { it.copy(songs = it.songs + OfflineSong(song, file.name, file.length())) }
+            bump()
+        }
+    }
+
+    /** Records (or updates) a playlist reference without re-resolving already-stored songs. */
+    suspend fun recordPlaylistRef(playListId: String, title: String, songIds: List<String>) =
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                val existing = index().playLists.firstOrNull { it.id == playListId }
+                val merged = (existing?.songIds ?: emptyList()).toMutableList().apply { addAll(songIds) }.distinct()
+                val pl = OfflinePlayList(playListId, title, merged, System.currentTimeMillis())
+                mutate { it.copy(playLists =
+                    if (existing == null) it.playLists + pl
+                    else it.playLists.map { old -> if (old.id == playListId) pl else old }) }
+                bump()
+            }
+        }
+
+    fun list(): List<OfflineSong> = withIndex0 { it.songs }
+
+    fun isDownloaded(id: String): Boolean = withIndex0 { it.songs.any { s -> s.song.id == id } }
+
+    fun find(id: String): OfflineSong? = withIndex0 { it.songs.firstOrNull { s -> s.song.id == id } }
+
+    fun size(): String = withIndex0 { idx ->
+        val total = idx.songs.sumOf { it.sizeBytes }
+        if (total <= 0) return@withIndex0 "0"
         val kb = total / 1024.0
         val mb = kb / 1024.0
-        return if (mb >= 1) String.format("%.1f MB", mb) else "${kb.toInt()} KB"
+        if (mb >= 1) String.format("%.1f MB", mb) else "${kb.toInt()} KB"
     }
 
-    fun playListFor(id: String): String? = withContext0 {
-        readIndex().playLists.firstOrNull { it.id == id }?.title
-    }
+    fun playListFor(id: String): String? = withIndex0 { it.playLists.firstOrNull { p -> p.id == id }?.title }
 
-    fun playLists(): List<OfflinePlayList> = withContext0 { readIndex().playLists }
+    fun playLists(): List<OfflinePlayList> = withIndex0 { it.playLists }
 
-    /**
-     * Downloads a song to private storage as a super-compressed copy (lowest
-     * bitrate the stream endpoint can give). Deduplicates by song id so the same
-     * song is never stored twice, even when it appears in multiple playlists.
-     */
+    /** Downloads a song to private storage as a super-compressed copy (lowest bitrate). */
     suspend fun download(song: Song): Result<File> = withContext(Dispatchers.IO) {
         runCatching {
-            val idx = readIndex()
-            if (idx.songs.any { it.song.id == song.id }) {
+            if (mutex.withLock { index().songs.any { it.song.id == song.id } }) {
                 return@withContext Result.success(fileFor(song.id))
             }
-            val streamBase = "https://music.plexs.me/api/embed/stream/" + song.id
-            val url = streamBase + "?low=1"
+            val url = "https://music.plexs.me/api/embed/stream/" + song.id + "?low=1"
             val file = fileFor(song.id)
             Http.client.newCall(
                 okhttp3.Request.Builder().url(url).get().build()
@@ -119,94 +166,73 @@ class OfflineRepository(context: Context) {
                 file.delete()
                 throw IllegalStateException("Empty download")
             }
-            val updated = idx.copy(songs = idx.songs + OfflineSong(song, file.name, file.length()))
-            writeIndex(updated)
-            bump()
+            mutex.withLock {
+                mutate { it.copy(songs = it.songs + OfflineSong(song, file.name, file.length())) }
+                bump()
+            }
             file
         }
     }
 
-    /**
-     * Downloads an entire playlist's track list, skipping already-stored ids so
-     * a song in two playlists (or a repeated track) is only ever saved once.
-     */
+    /** Records (or updates) a playlist reference without re-resolving already-stored songs. */
+    suspend fun recordPlaylist(playListId: String, title: String, songIds: List<String>) =
+        recordPlaylistRef(playListId, title, songIds)
+
+    /** Downloads an entire playlist's track list, skipping already-stored ids */
     suspend fun downloadPlayList(playListId: String, title: String, songs: List<Song>): Result<Pair<Int, Int>> =
         withContext(Dispatchers.IO) {
             runCatching {
-                val idx = readIndex()
-                var added = 0
-                val already = idx.songs.map { it.song.id }.toMutableSet()
-                val existingPlay = idx.playLists.firstOrNull { it.id == playListId }
+                val existingPlay = mutex.withLock { index().playLists.firstOrNull { it.id == playListId } }
                 val savedIds = (existingPlay?.songIds ?: emptyList()).toMutableList()
+                var added = 0
                 for (song in songs) {
-                    if (!already.contains(song.id)) {
+                    if (!isDownloaded(song.id)) {
                         val r = download(song).getOrNull()
-                        if (r != null) { added++; savedIds.add(song.id); already.add(song.id) }
-                    } else {
-                        // Song already downloaded; still record it under this playlist ref.
-                        if (!savedIds.contains(song.id)) savedIds.add(song.id)
+                        if (r != null) { added++; savedIds.add(song.id) }
+                    } else if (!savedIds.contains(song.id)) {
+                        savedIds.add(song.id)
                     }
                 }
-                val newPl = OfflinePlayList(playListId, title, savedIds, System.currentTimeMillis())
-                val pls = if (existingPlay == null) idx.playLists + newPl
-                    else idx.playLists.map { if (it.id == playListId) newPl else it }
-                writeIndex(idx.copy(playLists = pls))
-                bump()
-                added to savedIds.size
+                mutex.withLock {
+                    mutate { it.copy(playLists =
+                        if (existingPlay == null) it.playLists + OfflinePlayList(playListId, title, savedIds.distinct())
+                        else it.playLists.map { old -> if (old.id == playListId) OfflinePlayList(playListId, title, savedIds.distinct()) else old }) }
+                    bump()
+                }
+                added to savedIds.distinct().size
             }
         }
 
     suspend fun delete(id: String) {
         withContext(Dispatchers.IO) {
-            val idx = readIndex()
-            val song = idx.songs.firstOrNull { it.song.id == id } ?: return@withContext
-            fileFor(id).delete()
-            writeIndex(idx.copy(songs = idx.songs.filterNot { it.song.id == id }))
-            bump()
+            mutex.withLock {
+                val song = index().songs.firstOrNull { it.song.id == id } ?: return@withLock
+                fileFor(id).delete()
+                mutate { it.copy(songs = it.songs.filterNot { s -> s.song.id == id }) }
+                bump()
+            }
         }
     }
 
-    fun deleteAll() {
-        try {
-            dir.listFiles()?.forEach { it.delete() }
-            writeIndex(OfflineIndex())
-            bump()
-        } catch (_: Exception) {}
-    }
-
-    /**
-     * A "play" only counts once per genuine listen: called when playback has
-     * reached the 30s listen threshold in the playback controller. Because it is
-     * fired only on real progress, a page/app reload or restart never bumps it.
-     */
-    fun recordPlay(id: String) {
-        val idx = readIndex()
-        val count = (idx.playCounts[id] ?: 0) + 1
-        writeIndex(idx.copy(playCounts = idx.playCounts + (id to count)))
-    }
-
-    fun playCount(id: String): Int = readIndex().playCounts[id] ?: 0
-
-    private fun fileFor(id: String): File = File(dir, id + ".m4a")
-
-    private fun <T> withContext0(block: () -> T): T = block()
-
-    private fun readIndex(): OfflineIndex {
-        return try {
-            if (indexFile.exists()) json.decodeFromString<OfflineIndex>(indexFile.readText())
-            else OfflineIndex()
-        } catch (e: SerializationException) {
-            OfflineIndex()
-        } catch (e: Exception) {
-            OfflineIndex()
+    suspend fun deleteAll() {
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                dir.listFiles()?.forEach { it.delete() }
+                mutate { OfflineIndex() }
+                bump()
+            }
         }
     }
 
-    private fun writeIndex(idx: OfflineIndex) {
-        try {
-            indexFile.writeText(json.encodeToString(OfflineIndex.serializer(), idx))
-        } catch (e: Exception) {
-            // never let a failed index write break the UI
+    /** A "play" counts once per genuine listen (30s threshold in the controller). */
+    suspend fun recordPlay(id: String) {
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                val count = (index().playCounts[id] ?: 0) + 1
+                mutate { it.copy(playCounts = it.playCounts + (id to count)) }
+            }
         }
     }
+
+    fun playCount(id: String): Int = withIndex0 { it.playCounts[id] ?: 0 }
 }

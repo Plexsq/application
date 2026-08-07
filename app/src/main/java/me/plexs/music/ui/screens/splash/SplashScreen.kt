@@ -47,5 +47,5 @@ private suspend fun decide(session: SessionStore): String {
     // Network blip with a stored token still lands on Home rather than a flash to auth.
     val state = withTimeoutOrNull(5000) { runCatching { AuthRepository(session).getSession() }.getOrDefault(AuthState(session = null)) }
         ?: AuthState(session = null)
-    return if (state.session != null) Destinations.SEARCH else Destinations.SIGN_IN
+    return if (state.session != null) Destinations.MAIN else Destinations.SIGN_IN
 }

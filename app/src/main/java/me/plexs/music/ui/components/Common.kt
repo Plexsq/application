@@ -21,6 +21,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -30,6 +31,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -102,6 +106,9 @@ fun SongOverflowMenu(
     onDownload: () -> Unit,
     onDelete: () -> Unit,
     onAddToPlaylist: () -> Unit,
+    onPlayNext: (() -> Unit)? = null,
+    onAddToQueue: (() -> Unit)? = null,
+    onShare: (() -> Unit)? = null,
     downloading: Boolean = false,
     expanded: Boolean = false,
     onExpandedChange: (Boolean) -> Unit = {},
@@ -114,6 +121,21 @@ fun SongOverflowMenu(
             expanded = expanded,
             onDismissRequest = { onExpandedChange(false) },
         ) {
+            if (onPlayNext != null) {
+                DropdownMenuItem(
+                    text = { Text("Play next") },
+                    onClick = { onExpandedChange(false); onPlayNext() },
+                )
+            }
+            if (onAddToQueue != null) {
+                DropdownMenuItem(
+                    text = { Text("Add to queue") },
+                    onClick = { onExpandedChange(false); onAddToQueue() },
+                )
+            }
+            if (onPlayNext != null || onAddToQueue != null) {
+                HorizontalDivider()
+            }
             DropdownMenuItem(
                 text = { Text(if (downloaded) "Delete offline copy" else if (downloading) "Downloading…" else "Download offline") },
                 enabled = !downloading || downloaded,
@@ -123,6 +145,13 @@ fun SongOverflowMenu(
                 text = { Text("Add to playlist") },
                 onClick = { onExpandedChange(false); onAddToPlaylist() },
             )
+            if (onShare != null) {
+                HorizontalDivider()
+                DropdownMenuItem(
+                    text = { Text("Share") },
+                    onClick = { onExpandedChange(false); onShare() },
+                )
+            }
         }
     }
 }
@@ -269,5 +298,103 @@ fun DownloadIconButton(
         IconButton(onClick = onDownload) {
             Icon(Icons.Default.Download, contentDescription = "Download", tint = PlexMuted)
         }
+    }
+}
+
+/** Shares a song's public track link via the Android share sheet. */
+fun shareSong(context: android.content.Context, song: me.plexs.music.data.api.Song) {
+    val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(android.content.Intent.EXTRA_TEXT, "https://music.plexs.me/track/${song.id}")
+    }
+    context.startActivity(android.content.Intent.createChooser(intent, "Share song"))
+}
+
+/**
+ * Long-press context menu for a user playlist — mirrors the desktop playlist menu
+ * (Play / Play next / Add to queue / Rename / Delete). Rename opens a small dialog.
+ */
+@Composable
+fun PlaylistContextMenu(
+    playlist: me.plexs.music.data.playlists.UserPlaylist,
+    onPlay: () -> Unit,
+    onPlayNext: () -> Unit,
+    onAddToQueue: () -> Unit,
+    onRename: (String) -> Unit,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var showRename by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
+
+    val options = @Composable {
+        DropdownMenuItem(
+            text = { Text("Play") },
+            onClick = { onDismiss(); onPlay() },
+        )
+        DropdownMenuItem(
+            text = { Text("Play next") },
+            onClick = { onDismiss(); onPlayNext() },
+        )
+        DropdownMenuItem(
+            text = { Text("Add to queue") },
+            onClick = { onDismiss(); onAddToQueue() },
+        )
+        HorizontalDivider()
+        DropdownMenuItem(
+            text = { Text("Rename") },
+            onClick = { showRename = true },
+        )
+        DropdownMenuItem(
+            text = { Text("Delete", color = androidx.compose.material3.MaterialTheme.colorScheme.error) },
+            onClick = { confirmDelete = true },
+        )
+    }
+
+    DropdownMenu(
+        expanded = true,
+        onDismissRequest = onDismiss,
+    ) {
+        options()
+    }
+
+    if (showRename) {
+        var newName by remember { mutableStateOf(playlist.name) }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showRename = false },
+            containerColor = MaterialTheme.colorScheme.surface,
+            title = { Text("Rename playlist") },
+            text = {
+                OutlinedTextField(
+                    value = newName,
+                    onValueChange = { newName = it },
+                    singleLine = true,
+                    placeholder = { Text("Playlist name") },
+                    shape = RoundedCornerShape(10.dp),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showRename = false; onRename(newName) }) { Text("Save", color = PlexAccent) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRename = false }) { Text("Cancel") }
+            },
+        )
+    }
+    if (confirmDelete) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            containerColor = MaterialTheme.colorScheme.surface,
+            title = { Text("Delete playlist") },
+            text = { Text("Remove \"${playlist.name}\"?") },
+            confirmButton = {
+                TextButton(onClick = { confirmDelete = false; onDismiss(); onDelete() }) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) { Text("Cancel") }
+            },
+        )
     }
 }

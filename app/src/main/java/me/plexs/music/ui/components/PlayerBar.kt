@@ -15,10 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Repeat
-import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -48,8 +45,6 @@ fun PlayerBar(
     val hasItem by PlaybackController.hasItem.collectAsState()
     val currentTime by PlaybackController.currentTime.collectAsState()
     val duration by PlaybackController.duration.collectAsState()
-    val shuffle by PlaybackController.shuffle.collectAsState()
-    val repeat by PlaybackController.repeat.collectAsState()
     val song = PlaybackController.currentSong
     if (!hasItem || song == null) return
 
@@ -85,8 +80,8 @@ fun PlayerBar(
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(6.dp))
+                    .size(52.dp)
+                    .clip(RoundedCornerShape(8.dp))
                     .background(PlexSurfaceVariant),
             )
             Spacer(Modifier.width(12.dp))
@@ -108,32 +103,17 @@ fun PlayerBar(
                     )
                 }
             }
-            IconButton(onClick = { PlaybackController.toggleShuffle() }) {
-                Icon(
-                    Icons.Filled.Shuffle,
-                    contentDescription = "Shuffle",
-                    tint = if (shuffle) PlexAccent else PlexMuted,
-                )
-            }
-            IconButton(onClick = { PlaybackController.previous() }) {
-                Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", tint = PlexMuted)
-            }
+            Spacer(Modifier.width(8.dp))
             IconButton(onClick = { PlaybackController.playPause() }) {
                 Icon(
                     if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
                     contentDescription = "Play/Pause",
                     tint = PlexAccent,
+                    modifier = Modifier.size(32.dp),
                 )
             }
             IconButton(onClick = { PlaybackController.next() }) {
                 Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = PlexMuted)
-            }
-            IconButton(onClick = { PlaybackController.cycleRepeat() }) {
-                Icon(
-                    Icons.Filled.Repeat,
-                    contentDescription = "Repeat",
-                    tint = if (repeat != 0) PlexAccent else PlexMuted,
-                )
             }
         }
     }

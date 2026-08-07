@@ -23,7 +23,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -36,6 +38,8 @@ import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -43,8 +47,11 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,6 +63,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import me.plexs.music.PlexApp
+import me.plexs.music.data.api.LyricsResult
 import me.plexs.music.data.api.Song
 import me.plexs.music.playback.PlaybackController
 import me.plexs.music.ui.theme.PlexAccent
@@ -81,7 +90,18 @@ fun NowPlayingScreen(onClose: () -> Unit) {
     val repeat by PlaybackController.repeat.collectAsState()
     val favorites by PlaybackController.favorites.collectAsState()
     var showQueue by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var showLyrics by remember { mutableStateOf(false) }
+    var lyrics by remember { mutableStateOf<LyricsResult?>(null) }
     val fav = song?.let { favorites.any { f -> f.id == it.id } } ?: false
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val catalog = remember { (context.applicationContext as me.plexs.music.PlexApp).services.catalog }
+
+    LaunchedEffect(song?.id, showLyrics) {
+        lyrics = null
+        if (showLyrics && song != null) {
+            lyrics = catalog.lyrics(song.id, song.title, song.artist ?: "")
+        }
+    }
 
     AnimatedVisibility(
         visible = true,
@@ -101,7 +121,14 @@ fun NowPlayingScreen(onClose: () -> Unit) {
                 Spacer(Modifier.weight(1f))
                 Text("Now Playing", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.weight(1f))
-                IconButton(onClick = { showQueue = !showQueue }) {
+                IconButton(onClick = { showLyrics = !showLyrics; showQueue = false }) {
+                    Icon(
+                        Icons.Default.MusicNote,
+                        contentDescription = "Lyrics",
+                        tint = if (showLyrics) PlexAccent else PlexMuted,
+                    )
+                }
+                IconButton(onClick = { showQueue = !showQueue; showLyrics = false }) {
                     Icon(
                         Icons.Default.QueueMusic,
                         contentDescription = "Queue",
@@ -110,7 +137,9 @@ fun NowPlayingScreen(onClose: () -> Unit) {
                 }
             }
 
-            if (showQueue) {
+            if (showLyrics) {
+                LyricsView(song = song, lyrics = lyrics)
+            } else if (showQueue) {
                 Column(Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
                     Text(
                         "Up next",
@@ -315,5 +344,44 @@ fun QueueRow(song: Song, active: Boolean, onClick: () -> Unit, modifier: Modifie
             style = MaterialTheme.typography.bodySmall,
             color = PlexMuted,
         )
+    }
+}
+
+@Composable
+private fun LyricsView(song: Song?, lyrics: LyricsResult?) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
+        Text(
+            "Lyrics",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(vertical = 8.dp),
+        )
+        if (song == null) {
+            Text("Nothing playing", color = PlexMuted)
+        } else if (lyrics == null) {
+            Text("No lyrics available", color = PlexMuted)
+        } else {
+            androidx.compose.foundation.rememberScrollState().let { scrollState ->
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(scrollState),
+                ) {
+                    val lines = lyrics.synced?.map { it.text }
+                        ?: lyrics.plain?.split("\n")
+                        ?: emptyList()
+                    lines.forEach { line ->
+                        Text(
+                            text = line,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = PlexMuted,
+                            modifier = Modifier.padding(vertical = 4.dp),
+                        )
+                    }
+                    Spacer(Modifier.height(32.dp))
+                }
+            }
+        }
     }
 }

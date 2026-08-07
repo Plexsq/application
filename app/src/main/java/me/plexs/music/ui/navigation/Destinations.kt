@@ -5,6 +5,7 @@ object Destinations {
     const val SIGN_IN = "sign_in"
     const val SIGN_UP = "sign_up"
     const val FORGOT = "forgot"
+    const val MAIN = "main"
     const val HOME = "home"
     const val SEARCH = "search"
     const val LIKED = "liked"
