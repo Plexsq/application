@@ -64,7 +64,6 @@ import me.plexs.music.playback.PlaybackController
 import me.plexs.music.ui.components.DownloadIconButton
 import me.plexs.music.ui.components.SongOverflowMenu
 import me.plexs.music.ui.components.SongPlaylistPickerDialog
-import me.plexs.music.ui.components.UpdateDialog
 import me.plexs.music.ui.theme.PlexAccent
 import me.plexs.music.ui.theme.PlexMuted
 import me.plexs.music.ui.theme.PlexSurfaceVariant
@@ -432,7 +431,6 @@ fun SearchScreen(services: PlexApp.Services, onOpenCatalog: (type: String, id: S
                 onDismiss = { addTarget = null },
             )
         }
-        UpdateDialog(services)
     }
 }
 

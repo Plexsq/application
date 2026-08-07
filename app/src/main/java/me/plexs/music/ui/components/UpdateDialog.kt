@@ -27,7 +27,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
-import me.plexs.music.BuildConfig
 import me.plexs.music.PlexApp
 import me.plexs.music.ui.theme.PlexAccent
 import me.plexs.music.ui.theme.PlexMuted
@@ -45,21 +44,13 @@ fun UpdateDialog(services: PlexApp.Services) {
     var waitingForPermission by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        val app = runCatching { services.bootstrap.latest() }.getOrNull() ?: return@LaunchedEffect
-        val latest = app.latestVersion ?: return@LaunchedEffect
-        val current = BuildConfig.VERSION_NAME
-        val a = current.split(".").mapNotNull { it.toIntOrNull() }
-        val b = latest.split(".").mapNotNull { it.toIntOrNull() }
-        var newer = false
-        if (a.isNotEmpty() && b.isNotEmpty()) {
-            val len = maxOf(a.size, b.size)
-            for (i in 0 until len) {
-                val x = a.getOrElse(i) { 0 }
-                val y = b.getOrElse(i) { 0 }
-                if (x != y) { newer = x < y; break }
-            }
-        }
-        if (newer) {
+        // Code-based check: a new release must have a HIGHER built version code than
+        // the installed build. Uses the release manifest's toCode directly (not the
+        // version-name string), so users on any older build — including earlier betas
+        // whose names are "larger" — always get the prompt.
+        val manifest = runCatching { AppUpdater.latestManifest() }.getOrNull() ?: return@LaunchedEffect
+        val code = AppUpdater.installedVersionCode(context)
+        if (manifest.toCode > code) {
             label = "A new version of Plex is available — it installs in-app."
             show = true
         }

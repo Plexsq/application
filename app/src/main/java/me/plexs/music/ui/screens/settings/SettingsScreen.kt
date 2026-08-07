@@ -366,57 +366,66 @@ private fun fmtMinutes(m: Long): String {
 @Composable
 private fun StatisticsSection(services: PlexApp.Services) {
     var stats by remember { mutableStateOf<StatsData?>(null) }
+    var failed by remember { mutableStateOf(false) }
     // Re-fetch whenever the signed-in account changes so a linked desktop account's
     // real statistics are shown (never a stale/other account's cached values).
     val accountKey = services.session.user?.id ?: ""
+    val scope = rememberCoroutineScope()
+    fun load() {
+        failed = false
+        scope.launch {
+            val s = services.stats.fetch()
+            stats = s
+            failed = s == null
+        }
+    }
     LaunchedEffect(accountKey) {
         stats = null
-        stats = services.stats.fetch()
+        load()
     }
     Text("Statistics", fontWeight = FontWeight.Bold, color = PlexMuted)
     val s = stats
-    if (s == null) {
-        Text("Loading…", style = MaterialTheme.typography.bodyMedium, color = PlexMuted)
-    } else {
-        Row(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    fmtMinutes(s.daily),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text("Today", style = MaterialTheme.typography.bodySmall, color = PlexMuted)
-            }
-            Column(Modifier.weight(1f)) {
-                Text(
-                    fmtMinutes(s.monthly),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text("This month", style = MaterialTheme.typography.bodySmall, color = PlexMuted)
-            }
-        }
-        if (s.top.isNotEmpty()) {
-            Text("Top songs", fontWeight = FontWeight.Bold, color = PlexMuted, modifier = Modifier.padding(top = 12.dp))
-            s.top.forEachIndexed { i, e ->
-                Row(
-                    Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                ) {
+    when {
+        s != null -> {
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                Column(Modifier.weight(1f)) {
                     Text(
-                        "${i + 1}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = PlexMuted,
-                        modifier = Modifier.width(20.dp),
+                        fmtMinutes(s.daily),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
                     )
-                    coil.compose.AsyncImage(
-                        model = e.song?.thumbnail,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .width(28.dp)
-                            .height(28.dp)
-                            .clip(RoundedCornerShape(4.dp)),
+                    Text("Today", style = MaterialTheme.typography.bodySmall, color = PlexMuted)
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        fmtMinutes(s.monthly),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
                     )
+                    Text("This month", style = MaterialTheme.typography.bodySmall, color = PlexMuted)
+                }
+            }
+            if (s.top.isNotEmpty()) {
+                Text("Top songs", fontWeight = FontWeight.Bold, color = PlexMuted, modifier = Modifier.padding(top = 12.dp))
+                s.top.forEachIndexed { i, e ->
+                    Row(
+                        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "${i + 1}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = PlexMuted,
+                            modifier = Modifier.width(20.dp),
+                        )
+                        coil.compose.AsyncImage(
+                            model = e.song?.thumbnail,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .width(28.dp)
+                                .height(28.dp)
+                                .clip(RoundedCornerShape(4.dp)),
+                        )
                     Spacer(Modifier.width(8.dp))
                     Text(
                         e.song?.title ?: "Unknown",
@@ -441,6 +450,26 @@ private fun StatisticsSection(services: PlexApp.Services) {
                 color = PlexMuted,
                 modifier = Modifier.padding(top = 8.dp),
             )
+        }
+        }
+        failed && s == null -> {
+            Row(
+                Modifier.fillMaxWidth().padding(top = 8.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Couldn't load statistics",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.weight(1f),
+                )
+                androidx.compose.material3.TextButton(onClick = { load() }) {
+                    Text("Retry", color = PlexAccent, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                }
+            }
+        }
+        else -> {
+            Text("Loading…", style = MaterialTheme.typography.bodyMedium, color = PlexMuted)
         }
     }
 }

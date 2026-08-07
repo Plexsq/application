@@ -36,11 +36,38 @@ private object FlexibleLongSerializer : KSerializer<Long?> {
     }
 }
 
+private object FlexibleIntSerializer : KSerializer<Int> {
+    override val descriptor: SerialDescriptor =
+        PrimitiveSerialDescriptor("FlexibleInt", PrimitiveKind.INT)
+
+    override fun deserialize(decoder: Decoder): Int {
+        val json = decoder as? kotlinx.serialization.json.JsonDecoder
+            ?: return decoder.decodeInt()
+        return when (val el = json.decodeJsonElement()) {
+            is kotlinx.serialization.json.JsonPrimitive -> {
+                val s = el.content.trim().replace(",", "").replace("M", "000000").replace("K", "000")
+                // Accept int / float / numeric-string (the web stores float durations like 196.101).
+                s.toFloatOrNull()?.toInt() ?: s.toIntOrNull() ?: 0
+            }
+            else -> 0
+        }
+    }
+
+    override fun serialize(encoder: Encoder, value: Int) = encoder.encodeInt(value)
+}
+
 @Serializable
 data class InnertubeClient(
     val name: String,
     val version: String,
     val androidSdkVersion: Int,
+)
+
+@Serializable
+data class AppFlag(
+    val streamHost: String? = null,
+    val useWorkerStream: Boolean? = null,
+    val bufferMs: Int? = null,
 )
 
 @Serializable
@@ -50,6 +77,7 @@ data class AppConfig(
     val innertubeKey: String,
     val innertubeClients: List<InnertubeClient>,
     val latestVersion: String? = null,
+    val flags: AppFlag? = null,
 )
 
 @Serializable
@@ -93,6 +121,7 @@ data class Song(
     val artist: String = "",
     val artistId: String? = null,
     val album: String? = null,
+    @Serializable(with = FlexibleIntSerializer::class)
     val duration: Int = 0,
     val durationText: String? = null,
     val thumbnail: String? = null,

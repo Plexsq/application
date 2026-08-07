@@ -32,6 +32,11 @@ object AppUpdater {
     fun installedVersionCode(context: Context): Long =
         context.packageManager.getPackageInfo(context.packageName, 0).versionCode.toLong()
 
+    /** Fetches the latest update manifest (callers decide whether to act on it). */
+    suspend fun latestManifest(): UpdateManifest? = withContext(Dispatchers.IO) {
+        runCatching { fetchManifest() }.getOrNull()
+    }
+
     fun canInstallPermission(context: Context): Boolean =
         context.packageManager.canRequestPackageInstalls()
 

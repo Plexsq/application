@@ -163,6 +163,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         }
+                        me.plexs.music.ui.components.UpdateDialog(services)
                     }
                     composable(Destinations.NOW_PLAYING) {
                         Scaffold {

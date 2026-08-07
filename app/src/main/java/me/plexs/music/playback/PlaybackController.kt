@@ -266,20 +266,33 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
             val f = java.io.File(offline.offlineDir(), id + ".m4a")
             if (f.exists()) return f.toURI().toString()
         }
-        return "https://plex-meta.urdonkey6.workers.dev/api/stream/" + id
+        ensureConfigLoaded()
+        return streamHost() + "/api/stream/" + id
     }
 
     private val resolver = me.plexs.music.innertube.InnertubeResolver()
     private var innertubeKey: String? = null
     private var innertubeClients: List<me.plexs.music.data.api.InnertubeClient>? = null
+    private var remoteStreamHost: String? = null
+    private var remoteBufferMs: Int? = null
 
-    /** Fetches innertube key/clients from config once (off-thread), never throwing. */
+    private const val DEFAULT_STREAM_HOST = "https://plex-meta.urdonkey6.workers.dev"
+
+    /** Stream host override served by /api/app/config (server-driven, no reinstall). */
+    private fun streamHost(): String = remoteStreamHost ?: DEFAULT_STREAM_HOST
+
+    /** ExoPlayer playback buffer override served by /api/app/config. */
+    private fun playbackBufferMs(): Int? = remoteBufferMs
+
+    /** Fetches innertube key/clients + remote flags from config once (off-thread), never throwing. */
     private suspend fun ensureConfigLoaded() {
         if (innertubeKey != null && innertubeClients != null) return
         runCatching {
             val cfg = (contextRef?.applicationContext as? me.plexs.music.PlexApp)?.services?.config?.config()
             innertubeKey = cfg?.innertubeKey
             innertubeClients = cfg?.innertubeClients
+            remoteStreamHost = cfg?.flags?.streamHost?.takeIf { it.isNotBlank() }
+            remoteBufferMs = cfg?.flags?.bufferMs?.takeIf { it in 500..20000 }
         }
     }
 
@@ -339,7 +352,13 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
 
     fun ensureSession(context: Context): MediaSession {
         session?.let { return it }
-        val exo = ExoPlayer.Builder(context).build()
+        val exo = ExoPlayer.Builder(context)
+            .setLoadControl(
+                androidx.media3.exoplayer.DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(10000, 20000, playbackBufferMs() ?: 2500, playbackBufferMs() ?: 2500)
+                    .build()
+            )
+            .build()
         exo.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 _playing.value = isPlaying
@@ -701,7 +720,20 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
     }
 
     private fun ensureServiceStarted(context: Context) {
-        val intent = Intent(context, PlaybackService::class.java)
-        context.startService(intent)
+        try {
+            val intent = Intent(context, PlaybackService::class.java)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                // Foreground media service: media3 posts its notification as soon as
+                // the session is playing, so startForegroundService is required for
+                // background-blessed playback. Falls back to startService on error.
+                androidx.core.content.ContextCompat.startForegroundService(context, intent)
+            } else {
+                context.startService(intent)
+            }
+        } catch (_: Exception) {
+            // Android 12+ can block a background service start; never crash for it —
+            // playback continues via the in-process ExoPlayer regardless.
+            try { context.startService(Intent(context, PlaybackService::class.java)) } catch (_: Exception) {}
+        }
     }
 }
