@@ -63,6 +63,11 @@ class AuthViewModel(
         onStep2()
     }
 
+    /** Re-sends the signup verification code (does NOT recreate the account). */
+    fun resendSignup(email: String) = run {
+        auth.resendSignup(email)
+    }
+
     fun verifyOtp(email: String, otp: String, newPassword: String, onSuccess: () -> Unit) = run {
         auth.verifyOtp(email, otp, newPassword)
         onSuccess()

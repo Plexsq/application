@@ -53,6 +53,11 @@ fun ForgotScreen(vm: AuthViewModel, onDone: () -> Unit) {
         } else {
             Text("Enter the code we emailed you, then set a new password.", fontSize = 14.sp, modifier = Modifier.padding(bottom = 16.dp))
             PlexTextInput(otp, { otp = it }, "Verification code")
+            Spacer(Modifier.height(8.dp))
+            me.plexs.music.ui.components.ResendCodeRow(
+                key = "forgot:$email",
+                onResend = { vm.forgot(email) {} },
+            )
             Spacer(Modifier.height(12.dp))
             PlexTextInput(newPassword, { newPassword = it }, "New password", isPassword = true)
             Spacer(Modifier.height(20.dp))

@@ -111,9 +111,18 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
     /** Queues a list of songs to play immediately after the current track. */
     fun playNext(context: android.content.Context?, songs: List<Song>) {
         val q = _queue.value.toMutableList()
+        if (q.isEmpty()) {
+            // Nothing playing yet — just start the requested songs.
+            contextRef = context?.applicationContext ?: contextRef
+            _queue.value = songs.filter { it.id.isNotEmpty() }
+            _queueIndex.value = 0
+            _playing.value = false
+            resolveAndPlay(contextRef ?: return, _queue.value[0])
+            scheduleUserDataSave()
+            return
+        }
         val idx = _queueIndex.value.coerceAtLeast(0)
-        if (idx > q.size) return
-        val fresh = songs.filter { s -> s.id.isNotEmpty() && !q.any { it.id == s.id } }
+        val fresh = songs.filter { it.id.isNotEmpty() }
         q.addAll(idx + 1, fresh)
         contextRef = context?.applicationContext ?: contextRef
         _queue.value = q

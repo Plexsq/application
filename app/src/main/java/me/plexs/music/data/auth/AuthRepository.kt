@@ -41,6 +41,9 @@ class AuthRepository(private val store: SessionStore) {
     suspend fun verifySignup(email: String, otp: String): AuthResponse =
         post("$base/api/auth/verify-signup", VerifySignupRequest(email.trim(), otp.trim()))
 
+    suspend fun resendSignup(email: String): AuthResponse =
+        post("$base/api/auth/resend-signup", mapOf("email" to email.trim()))
+
     suspend fun forgotPassword(email: String): AuthResponse =
         post("$base/api/auth/forgot-password", ForgotPasswordRequest(email.trim()))
 

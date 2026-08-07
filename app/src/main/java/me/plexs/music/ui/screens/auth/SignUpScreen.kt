@@ -64,6 +64,11 @@ fun SignUpScreen(vm: AuthViewModel, onSignedUp: () -> Unit) {
                 modifier = Modifier.padding(bottom = 16.dp),
             )
             PlexTextInput(otp, { otp = it }, "Verification code")
+            Spacer(Modifier.height(8.dp))
+            me.plexs.music.ui.components.ResendCodeRow(
+                key = email,
+                onResend = { vm.resendSignup(vm.pendingEmail ?: email) },
+            )
             Spacer(Modifier.height(20.dp))
             PlexButton("Verify", loading = vm.loading, onClick = {
                 vm.verifySignup(vm.pendingEmail ?: email, otp) { onSignedUp() }

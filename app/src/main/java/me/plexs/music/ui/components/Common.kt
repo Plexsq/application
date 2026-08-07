@@ -31,9 +31,11 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -466,4 +468,43 @@ fun PlaylistSheet(
         dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
         confirmButton = {},
     )
+}
+
+/**
+ * A 30-second resend countdown followed by a "Resend code" button. Clicking it
+ * calls [onResend] and restarts the countdown. Callers pass the same [key] each
+ * time a new code is first sent so the timer restarts.
+ */
+@Composable
+fun ResendCodeRow(key: String, onResend: () -> Unit, modifier: Modifier = Modifier) {
+    var secondsLeft by remember(key) { mutableStateOf(30) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(key) {
+        while (secondsLeft > 0) {
+            kotlinx.coroutines.delay(1000)
+            secondsLeft--
+        }
+    }
+    Row(modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        if (secondsLeft > 0) {
+            Text(
+                "Resend code in ${secondsLeft}s",
+                color = PlexMuted,
+                fontSize = 13.sp,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = {}, enabled = false) { Text("Resend", color = PlexMuted) }
+        } else {
+            Text(
+                "Didn't get a code?",
+                color = PlexMuted,
+                fontSize = 13.sp,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = {
+                secondsLeft = 30
+                onResend()
+            }) { Text("Resend code", color = PlexAccent, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) }
+        }
+    }
 }
