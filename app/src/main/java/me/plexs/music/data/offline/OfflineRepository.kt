@@ -141,7 +141,7 @@ class OfflineRepository(context: Context) {
             if (mutex.withLock { index().songs.any { it.song.id == song.id } }) {
                 return@withContext Result.success(fileFor(song.id))
             }
-            val url = "https://music.plexs.me/api/embed/stream/" + song.id + "?low=1"
+            val url = "https://plex-meta.urdonkey6.workers.dev/api/stream/" + song.id + "?low=1"
             val file = fileFor(song.id)
             Http.client.newCall(
                 okhttp3.Request.Builder().url(url).get().build()

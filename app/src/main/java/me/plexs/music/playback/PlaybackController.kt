@@ -227,18 +227,25 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
         resolveAndPlay(ctx2, song)
     }
 
+    /** Monotonic counter so a slow/stuck resolve can't override a newer song tap. */
+    @Volatile
+    private var playGeneration = 0L
+
     /** Resolves a playable URL then hands it to ExoPlayer. Offline → direct-on-device → proxy. */
     private fun resolveAndPlay(ctx: android.content.Context, song: Song) {
+        val gen = ++playGeneration
         scope.launch {
             val url = resolveStreamUrl(song.id)
+            if (gen != playGeneration) return@launch // a newer song was picked meanwhile
             play(ctx, url, song.title, song.artist)
         }
     }
 
     /**
      * Source priority: offline copy → on-device innertube (direct googlevideo, ~6s cap)
-     * → server proxy. The device resolve is ~3s vs the cold proxy chain which can take
-     * multiple round-trips, so this is the main "songs start fast" fix.
+     * → worker stream relay (Cloudflare edge, reliable) → server proxy. The device
+     * resolve is ~3s vs the cold proxy chain which can take multiple round-trips, so
+     * this is the main "songs start fast" fix.
      */
     private suspend fun resolveStreamUrl(id: String): String {
         val offline = offlineRepo
@@ -250,7 +257,8 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
             directResolve(id)
         }
         if (url != null && url.isNotEmpty()) return url
-        return "https://music.plexs.me/api/embed/stream/" + id
+        // Worker stream relay is the reliable fast path (Cloudflare edge, ~0.2s).
+        return "https://plex-meta.urdonkey6.workers.dev/api/stream/" + id
     }
 
     private val resolver = me.plexs.music.innertube.InnertubeResolver()
@@ -404,10 +412,10 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
         while (preResolved.size > 64) preResolved.remove(preResolved.iterator().next())
     }
 
-    /** Pokes the proxy stream endpoint so its server-side resolution is cached before it's needed. */
+    /** Pokes the worker stream relay so its server-side resolution is cached before it's needed. */
     private fun warmProxy(id: String) {
         val req = okhttp3.Request.Builder()
-            .url("https://music.plexs.me/api/embed/stream/" + id)
+            .url("https://plex-meta.urdonkey6.workers.dev/api/stream/" + id)
             .header("Range", "bytes=0-0")
             .header("Connection", "close")
             .build()

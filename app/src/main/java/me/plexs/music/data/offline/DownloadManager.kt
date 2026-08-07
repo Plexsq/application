@@ -91,7 +91,7 @@ class DownloadManager(private val offline: OfflineRepository) {
         if (offline.isDownloaded(song.id)) return offline.fileFor(song.id)
 
         val id = song.id
-        val url = "https://music.plexs.me/api/embed/stream/" + id + "?low=1"
+        val url = "https://plex-meta.urdonkey6.workers.dev/api/stream/" + id + "?low=1"
         val file = offline.fileFor(id)
         client.newCall(
             okhttp3.Request.Builder().url(url).get().build()
