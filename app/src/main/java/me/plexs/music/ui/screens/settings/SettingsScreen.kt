@@ -366,7 +366,11 @@ private fun fmtMinutes(m: Long): String {
 @Composable
 private fun StatisticsSection(services: PlexApp.Services) {
     var stats by remember { mutableStateOf<StatsData?>(null) }
-    LaunchedEffect(Unit) {
+    // Re-fetch whenever the signed-in account changes so a linked desktop account's
+    // real statistics are shown (never a stale/other account's cached values).
+    val accountKey = services.session.user?.id ?: ""
+    LaunchedEffect(accountKey) {
+        stats = null
         stats = services.stats.fetch()
     }
     Text("Statistics", fontWeight = FontWeight.Bold, color = PlexMuted)
