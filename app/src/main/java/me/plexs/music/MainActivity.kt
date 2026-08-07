@@ -105,7 +105,7 @@ class MainActivity : ComponentActivity() {
                     composable(Destinations.SIGN_IN) {
                         SignInScreen(authVm, services.config, onSignedIn = {
                             navController.navigate(Destinations.MAIN) {
-                                popUpTo(Destinations.SPLASH) { inclusive = true }
+                                popUpTo(0) { inclusive = true }
                             }
                         }, onForgot = {
                             navController.navigate(Destinations.FORGOT)
@@ -116,7 +116,7 @@ class MainActivity : ComponentActivity() {
                     composable(Destinations.SIGN_UP) {
                         SignUpScreen(authVm) {
                             navController.navigate(Destinations.MAIN) {
-                                popUpTo(Destinations.SPLASH) { inclusive = true }
+                                popUpTo(0) { inclusive = true }
                             }
                         }
                     }

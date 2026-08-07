@@ -103,6 +103,9 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
         if (songs.isEmpty()) return
         contextRef = context.applicationContext
         val (songs2, index2) = normalizeForShuffle(songs, index)
+        retriedWorker.clear()
+        retriedDirect.clear()
+        lastResolvedSource = ""
         _queue.value = songs2
         _queueIndex.value = index2
         playAt(context.applicationContext, index2)
@@ -231,21 +234,31 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
     @Volatile
     private var playGeneration = 0L
 
+    /** Tracks which fallback source has already been tried for a song id (loop guard). */
+    private val retriedWorker = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val retriedDirect = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    /** The stream source currently in use for [currentSong] ("worker" or "direct"). */
+    @Volatile
+    private var lastResolvedSource = ""
+
     /** Resolves a playable URL then hands it to ExoPlayer. Offline → direct-on-device → proxy. */
     private fun resolveAndPlay(ctx: android.content.Context, song: Song) {
         val gen = ++playGeneration
         scope.launch {
             val url = resolveStreamUrl(song.id)
             if (gen != playGeneration) return@launch // a newer song was picked meanwhile
+            lastResolvedSource = "worker"
             play(ctx, url, song.title, song.artist)
         }
     }
 
     /**
-     * Source priority: offline copy → on-device innertube (direct googlevideo, ~6s cap)
-     * → worker stream relay (Cloudflare edge, reliable) → server proxy. The device
-     * resolve is ~3s vs the cold proxy chain which can take multiple round-trips, so
-     * this is the main "songs start fast" fix.
+     * Source priority: offline copy → worker stream relay (Cloudflare edge, reliable).
+     * The on-device innertube resolve is intentionally NOT the primary source: raw
+     * googlevideo URLs can 403 for some songs/networks (e.g. datacenter IPs), and the
+     * worker relay resolves + pipes server-side, so it works everywhere. If the worker
+     * ever fails, [onPlayerError] falls back to the on-device resolve.
      */
     private suspend fun resolveStreamUrl(id: String): String {
         val offline = offlineRepo
@@ -253,11 +266,6 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
             val f = java.io.File(offline.offlineDir(), id + ".m4a")
             if (f.exists()) return f.toURI().toString()
         }
-        val url = withTimeoutOrNull(6000) {
-            directResolve(id)
-        }
-        if (url != null && url.isNotEmpty()) return url
-        // Worker stream relay is the reliable fast path (Cloudflare edge, ~0.2s).
         return "https://plex-meta.urdonkey6.workers.dev/api/stream/" + id
     }
 
@@ -283,6 +291,43 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
         return runCatching { resolver.resolve(id, key, clients)?.url }.getOrNull()
     }
 
+    /**
+     * ExoPlayer reported a source error for the current song. Worker-relay 5xx errors
+     * (502/503 from its upstream) are transient, so the FIRST retry goes back to the
+     * worker; only if the worker has already failed once for this song do we fall back
+     * to the on-device innertube resolve. Both are guarded per song id to avoid loops.
+     */
+    private fun retryWithAlternativeSource(error: androidx.media3.common.PlaybackException) {
+        val ctx = contextRef ?: return
+        val song = currentSong ?: return
+        val id = song.id
+        if (id.isEmpty()) return
+        val gen = playGeneration
+        val viaWorker = retriedWorker.add(id)
+        val viaDirect = !viaWorker && retriedDirect.add(id)
+        if (!viaWorker && !viaDirect) {
+            _playing.value = false
+            notifCallback?.invoke()
+            return
+        }
+        scope.launch {
+            delay(120)
+            if (gen != playGeneration) return@launch
+            val url = if (viaWorker) {
+                "https://plex-meta.urdonkey6.workers.dev/api/stream/" + id
+            } else {
+                withTimeoutOrNull(6000) { directResolve(id) }
+            }
+            if (url != null && url.isNotEmpty() && gen == playGeneration) {
+                lastResolvedSource = if (viaWorker) "worker" else "direct"
+                play(ctx, url, song.title, song.artist)
+            } else {
+                _playing.value = false
+                notifCallback?.invoke()
+            }
+        }
+    }
+
     private fun recordRecentlyPlayed(song: Song) {
         val cur = _recentlyPlayed.value.toMutableList()
         cur.removeAll { it.id == song.id }
@@ -302,6 +347,9 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
             }
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_ENDED) onPlaybackEnded()
+            }
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                retryWithAlternativeSource(error)
             }
         })
         player = exo

@@ -117,13 +117,7 @@ fun HomeScreen(services: PlexApp.Services, onOpenSection: (String) -> Unit) {
                         icon = if (pl.songs.isEmpty()) Icons.Default.PlaylistAdd else null,
                         label = pl.name,
                         sub = "${pl.songs.size} song${if (pl.songs.size != 1) "s" else ""}",
-                        onClick = {
-                            if (pl.songs.isNotEmpty()) {
-                                openPl = pl
-                            } else {
-                                showCreate = true
-                            }
-                        },
+                        onClick = { openPl = pl },
                         onLongClick = { menuPl = pl },
                     )
                 }
