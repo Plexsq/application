@@ -597,17 +597,15 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
         _hasItem.value = false
     }
 
-    fun restore(context: Context) {
+fun restore(context: Context) {
         offlineRepo = (context.applicationContext as me.plexs.music.PlexApp).services.offline
         playlistsStore = (context.applicationContext as me.plexs.music.PlexApp).services.playlists
-        // Warm the innertube config early so the first play doesn't burn its resolve
-        // budget fetching app config for the first time.
         warmConfig()
         val s = me.plexs.music.data.session.SessionStore(context)
         if (!s.isSignedIn) return
         repo = me.plexs.music.data.api.UserDataRepository(s)
-        repoSave?.cancel()
-        repoSave = scope.launch {
+        syncJob?.cancel()
+        syncJob = scope.launch {
             val d = repo?.fetch() ?: return@launch
             mergeServerData(d)
         }
@@ -638,8 +636,8 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
         val s = me.plexs.music.data.session.SessionStore(context)
         if (!s.isSignedIn) return
         repo = me.plexs.music.data.api.UserDataRepository(s)
-        repoSave?.cancel()
-        repoSave = scope.launch {
+        syncJob?.cancel()
+        syncJob = scope.launch {
             delay(1000)
             val d = repo?.fetch() ?: return@launch
             mergeServerData(d)
@@ -668,6 +666,10 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
 
     @Volatile
     private var repoSave: Job? = null
+
+    /** Separate slot for fetch+merge so a debounced save can never cancel the sync read. */
+    @Volatile
+    private var syncJob: Job? = null
 
     private fun scheduleUserDataSave() {
         repoSave?.cancel()
