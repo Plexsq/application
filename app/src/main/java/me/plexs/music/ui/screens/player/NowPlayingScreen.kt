@@ -12,6 +12,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,11 +23,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -51,9 +57,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlin.math.roundToInt
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,6 +71,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import me.plexs.music.PlexApp
 import me.plexs.music.data.api.LyricsResult
@@ -364,50 +373,75 @@ private fun LyricsView(song: Song?, lyrics: LyricsResult?, currentTimeMs: Long) 
             Text("No lyrics available", color = PlexMuted)
         } else {
             val lr = lyrics
-            val scrollState = rememberScrollState()
-            // Active line index derived from the current playback position against each timestamp.
-            val activeIndex = remember(currentTimeMs, lr) {
-                lr.synced?.let { synced ->
+            val lines = lr.synced ?: emptyList()
+            if (lines.isEmpty()) {
+                Text(
+                    lr.plain?.trimEnd() ?: "No lyrics available",
+                    color = PlexMuted,
+                    fontSize = 16.sp,
+                )
+            } else {
+                // Active line derived from playback position (matching the PC behavior).
+                val activeIndex = remember(currentTimeMs, lr) {
                     var idx = 0
-                    for ((i, l) in synced.withIndex()) {
+                    for ((i, l) in lines.withIndex()) {
                         if (l.time <= currentTimeMs / 1000.0) idx = i else break
                     }
                     idx
-                } ?: -1
-            }
-            LaunchedEffect(activeIndex) {
-                if (activeIndex > 0) {
-                    scrollState.animateScrollTo(scrollState.value + 56)
                 }
-            }
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .verticalScroll(scrollState),
-            ) {
-                if (lr.synced != null) {
-                    lr.synced.forEachIndexed { i, line ->
-                        val active = i == activeIndex
-                        Text(
-                            text = line.text,
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-                            color = if (active) PlexAccent else PlexMuted,
-                            modifier = Modifier.padding(vertical = 4.dp),
-                        )
-                    }
-                } else {
-                    lr.plain?.split("\n")?.forEach { line ->
-                        Text(
-                            text = line,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = PlexMuted,
-                            modifier = Modifier.padding(vertical = 4.dp),
-                        )
+                val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+                val lineH = 54.dp
+                val density = LocalDensity.current
+                var containerPx by androidx.compose.runtime.remember { mutableIntStateOf(0) }
+                // Spotify-style: smoothly keep the ACTIVE line vertically centered.
+                LaunchedEffect(activeIndex, containerPx) {
+                    if (containerPx <= 0) return@LaunchedEffect
+                    val linePx = with(density) { lineH.toPx() }
+                    val offset = ((containerPx - linePx) / 2).coerceAtLeast(0f).roundToInt()
+                    listState.animateScrollToItem(activeIndex, offset)
+                }
+                BoxWithConstraints(
+                    Modifier.fillMaxWidth().weight(1f)
+                        .onSizeChanged { containerPx = it.height },
+                ) {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                            vertical = (maxHeight - lineH) / 2,
+                        ),
+                    ) {
+                        items(lines.size, key = { i -> i }) { i ->
+                            val line = lines[i]
+                            val active = i == activeIndex
+                            val size by androidx.compose.animation.core.animateFloatAsState(
+                                targetValue = if (active) 1f else 0.82f,
+                                label = "lyric-size",
+                            )
+                            val alpha by androidx.compose.animation.core.animateFloatAsState(
+                                targetValue = if (active) 1f else 0.38f,
+                                label = "lyric-alpha",
+                            )
+                            Text(
+                                text = line.text,
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontSize = (18f * size).sp,
+                                fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                                color = if (active) PlexAccent else PlexMuted,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(lineH)
+                                    .clickable(
+                                        interactionSource = androidx.compose.foundation.interaction.MutableInteractionSource(),
+                                        indication = null,
+                                    ) { PlaybackController.seekTo((line.time * 1000).toLong()) }
+                                    .alpha(alpha)
+                                    .padding(top = 2.dp),
+                            )
+                        }
                     }
                 }
-                Spacer(Modifier.height(32.dp))
+                Spacer(Modifier.height(12.dp))
             }
         }
     }

@@ -45,13 +45,13 @@ class DownloadManager(private val offline: OfflineRepository) {
 
     fun isActive(id: String): Boolean = _states.value[id] is DownloadState.Downloading
 
-    fun download(song: Song) {
+    fun download(song: Song, auto: Boolean = false) {
         val id = song.id
         if (id.isEmpty()) return
         if (!active.add(id)) return
         _states.value = _states.value + (id to DownloadState.Downloading(0f))
         appScope.launch {
-            val result = runCatching { doDownload(song) }
+            val result = runCatching { doDownload(song, auto) }
             active.remove(id)
             val state = result.fold(
                 onSuccess = { DownloadState.Done },
@@ -87,7 +87,7 @@ class DownloadManager(private val offline: OfflineRepository) {
         runCatching { File(offline.offlineDir(), id + ".m4a").delete() }
     }
 
-    private suspend fun doDownload(song: Song): File {
+    private suspend fun doDownload(song: Song, auto: Boolean = false): File {
         if (offline.isDownloaded(song.id)) return offline.fileFor(song.id)
 
         val id = song.id
@@ -123,7 +123,7 @@ class DownloadManager(private val offline: OfflineRepository) {
             input.close()
         }
         if (!file.exists() || file.length() == 0L) throw IllegalStateException("Empty download")
-        offline.commitDownload(song, file)
+        offline.commitDownload(song, file, auto)
         return file
     }
 }

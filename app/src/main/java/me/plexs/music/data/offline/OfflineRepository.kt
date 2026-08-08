@@ -18,6 +18,7 @@ data class OfflineSong(
     val fileName: String,
     val sizeBytes: Long,
     val downloadedAt: Long = System.currentTimeMillis(),
+    val autoCache: Boolean = false,
 )
 
 @Serializable
@@ -33,6 +34,7 @@ data class OfflineIndex(
     var songs: List<OfflineSong> = emptyList(),
     var playLists: List<OfflinePlayList> = emptyList(),
     var playCounts: Map<String, Int> = emptyMap(),
+    var lastPlayedAt: Map<String, Long> = emptyMap(),
 )
 
 /**
@@ -95,10 +97,10 @@ class OfflineRepository(context: Context) {
     }
 
     /** Records a finished download into the index (used by DownloadManager). */
-    suspend fun commitDownload(song: Song, file: File) = withContext(Dispatchers.IO) {
+    suspend fun commitDownload(song: Song, file: File, autoCache: Boolean = false) = withContext(Dispatchers.IO) {
         mutex.withLock {
             if (index().songs.any { it.song.id == song.id }) return@withLock
-            mutate { it.copy(songs = it.songs + OfflineSong(song, file.name, file.length())) }
+            mutate { it.copy(songs = it.songs + OfflineSong(song, file.name, file.length(), autoCache = autoCache)) }
             bump()
         }
     }
@@ -136,7 +138,7 @@ class OfflineRepository(context: Context) {
     fun playLists(): List<OfflinePlayList> = withIndex0 { it.playLists }
 
     /** Downloads a song to private storage as a super-compressed copy (lowest bitrate). */
-    suspend fun download(song: Song): Result<File> = withContext(Dispatchers.IO) {
+    suspend fun download(song: Song, autoCache: Boolean = false): Result<File> = withContext(Dispatchers.IO) {
         runCatching {
             if (mutex.withLock { index().songs.any { it.song.id == song.id } }) {
                 return@withContext Result.success(fileFor(song.id))
@@ -162,12 +164,13 @@ class OfflineRepository(context: Context) {
                 output.close()
                 input.close()
             }
-            if (!file.exists() || file.length() == 0L) {
+            // Corruption guard: a valid audio download is never tiny.
+            if (!file.exists() || file.length() < 30_000L) {
                 file.delete()
                 throw IllegalStateException("Empty download")
             }
             mutex.withLock {
-                mutate { it.copy(songs = it.songs + OfflineSong(song, file.name, file.length())) }
+                mutate { it.copy(songs = it.songs + OfflineSong(song, file.name, file.length(), autoCache = autoCache)) }
                 bump()
             }
             file
@@ -229,9 +232,43 @@ class OfflineRepository(context: Context) {
         withContext(Dispatchers.IO) {
             mutex.withLock {
                 val count = (index().playCounts[id] ?: 0) + 1
-                mutate { it.copy(playCounts = it.playCounts + (id to count)) }
+                mutate { it.copy(
+                    playCounts = it.playCounts + (id to count),
+                    lastPlayedAt = it.lastPlayedAt + (id to System.currentTimeMillis()),
+                ) }
             }
         }
+    }
+
+    /** True when the stored file is missing or clearly corrupt (tiny/empty). */
+    fun isCorrupt(id: String): Boolean {
+        return withIndex0 { idx ->
+            val e = idx.songs.firstOrNull { s -> s.song.id == id } ?: return@withIndex0 false
+            !File(dir, e.fileName).exists() || File(dir, e.fileName).length() < 30_000L
+        }
+    }
+
+    /** Deletes auto-cache songs not played for [ttlMs] (default 24h). User downloads stay forever. */
+    fun purgeExpiredAutoCache(now: Long = System.currentTimeMillis(), ttlMs: Long = 24 * 3600_000L) {
+        withIndex0 { idx ->
+            val stale = idx.songs.filter { it.autoCache && (now - (idx.lastPlayedAt[it.song.id] ?: it.downloadedAt)) > ttlMs }
+            if (stale.isEmpty()) return@withIndex0
+            stale.forEach { runCatching { File(dir, it.fileName).delete() } }
+            val ids = stale.map { it.song.id }.toSet()
+            mutate { it.copy(songs = it.songs.filterNot { ids.contains(it.song.id) }) }
+            bump()
+        }
+    }
+
+    /** Downloads completed (every song id present) → used for the playlist checkmark. */
+    fun completedPlaylistLocked(pl: OfflinePlayList): Boolean {
+        return withIndex0 { idx ->
+            pl.songIds.isNotEmpty() && pl.songIds.all { id -> idx.songs.any { it.song.id == id } }
+        }
+    }
+    fun completedPlaylist(pl: OfflinePlayList): Boolean = completedPlaylistLocked(pl)
+    fun downloadedCount(pl: OfflinePlayList): Int = withIndex0 { idx ->
+        pl.songIds.count { id -> idx.songs.any { it.song.id == id } }
     }
 
     fun playCount(id: String): Int = withIndex0 { it.playCounts[id] ?: 0 }

@@ -532,7 +532,7 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
                         if (id != null && countedPlays.add(id)) {
                             offlineRepo?.recordPlay(id)
                             recordPlayCount(id)
-                            maybeAutoDownload(song)
+                            maybeAutoCache(song)
                             reportPlay(song)
                         }
                         accumulateStats()
@@ -576,13 +576,15 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
         }
     }
 
-    private fun maybeAutoDownload(song: Song) {
+    private fun maybeAutoCache(song: Song) {
         val offline = offlineRepo ?: return
         val id = song.id
+        if (id.isEmpty()) return
         if (offline.isDownloaded(id)) return
-        if (offline.playCount(id) < 3) return
-        if (!autoDownloading.add(id)) return
-        (contextRef?.applicationContext as? me.plexs.music.PlexApp)?.services?.downloads?.download(song)
+        // Only cache tracks that have a real video id (deezer ids can't be fetched).
+        if (!id.matches(Regex("^[A-Za-z0-9_-]{11}$"))) return
+if (!autoDownloading.add(id)) return
+        (contextRef?.applicationContext as? me.plexs.music.PlexApp)?.services?.downloads?.download(song, auto = true)
     }
 
     fun release() {
@@ -600,7 +602,9 @@ private val _queue = MutableStateFlow<List<Song>>(emptyList())
 fun restore(context: Context) {
         offlineRepo = (context.applicationContext as me.plexs.music.PlexApp).services.offline
         playlistsStore = (context.applicationContext as me.plexs.music.PlexApp).services.playlists
-        warmConfig()
+warmConfig()
+        // Reclaim auto-cache tracks not played for 24h (explicit downloads stay forever).
+        scope.launch(Dispatchers.IO) { offlineRepo?.purgeExpiredAutoCache() }
         val s = me.plexs.music.data.session.SessionStore(context)
         if (!s.isSignedIn) return
         repo = me.plexs.music.data.api.UserDataRepository(s)
@@ -610,6 +614,27 @@ fun restore(context: Context) {
             mergeServerData(d)
         }
         watchPlaylistWrites()
+        startDataPolling(context)
+    }
+
+    // Poll the account store every few seconds so edits made on the PC show up on the
+    // phone without a manual refresh — cheap for a single-user library.
+    @Volatile
+    private var pollJob: Job? = null
+    private fun startDataPolling(context: Context) {
+        pollJob?.cancel()
+        pollJob = scope.launch {
+            while (true) {
+                delay(6000)
+                try {
+                    val s = me.plexs.music.data.session.SessionStore(context)
+                    if (!s.isSignedIn) continue
+                    val r = me.plexs.music.data.api.UserDataRepository(s)
+                    val d = r.fetch() ?: continue
+                    mergeServerData(d)
+                } catch (_: Exception) {}
+            }
+        }
     }
 
     /** Loads the innertube key/clients off the main thread so they're ready before first play. */
@@ -649,11 +674,16 @@ fun restore(context: Context) {
     private fun mergeServerData(d: me.plexs.music.data.api.UserData) {
         if (d.favorites.isNotEmpty()) _favorites.value = d.favorites
         if (d.recentlyPlayed.isNotEmpty()) _recentlyPlayed.value = d.recentlyPlayed
-        if (d.queue.isNotEmpty()) {
+        // Account-shared queue: only adopt when the server's queue is newer.
+        val queueNewer = d.queue.isNotEmpty() &&
+            d.queueUpdatedAt > _lastQueueUpdatedAt &&
+            !sameQueue(d.queue)
+        if (queueNewer) {
             _queue.value = d.queue
             _queueIndex.value = if (d.queueIndex in d.queue.indices) d.queueIndex else 0
+            _lastQueueUpdatedAt = d.queueUpdatedAt
         }
-        playlistsStore?.syncFromServer(d.playlists)
+        playlistsStore?.syncFromServer(d.playlists, d.deletedPlaylists)
         if (d.playtime.daily > 0 || d.playtime.monthly > 0) {
             val cur = _playtime.value
             _playtime.value = me.plexs.music.data.api.PlaytimeData(
@@ -663,6 +693,16 @@ fun restore(context: Context) {
         }
         d.play_counts.forEach { (id, c) -> playCounts.merge(id, c) { a, b -> maxOf(a, b) } }
     }
+
+    private fun sameQueue(other: List<me.plexs.music.data.api.Song>): Boolean {
+        val q = _queue.value
+        if (q.size != other.size) return false
+        for (i in q.indices) if (q[i].id != other[i].id) return false
+        return true
+    }
+
+    @Volatile
+    private var _lastQueueUpdatedAt = 0L
 
     @Volatile
     private var repoSave: Job? = null
@@ -684,6 +724,7 @@ fun restore(context: Context) {
         val d = me.plexs.music.data.api.UserData(
             queue = _queue.value,
             queueIndex = _queueIndex.value,
+            queueUpdatedAt = System.currentTimeMillis(),
             favorites = _favorites.value,
             recentlyPlayed = _recentlyPlayed.value,
             playlists = playlistsStore?.list()?.map {
@@ -693,11 +734,16 @@ fun restore(context: Context) {
                     image = it.image,
                     songs = it.songs,
                     createdAt = it.createdAt,
+                    updatedAt = it.updatedAt,
                 )
+            } ?: emptyList(),
+            deletedPlaylists = playlistsStore?.deletes()?.map {
+                me.plexs.music.data.api.PlaylistTombstone(it.id, it.name, it.deletedAt)
             } ?: emptyList(),
             playtime = _playtime.value,
             play_counts = playCounts.toMap(),
         )
+        _lastQueueUpdatedAt = d.queueUpdatedAt
         if (!d.favorites.isEmpty() || !d.recentlyPlayed.isEmpty() || !d.queue.isEmpty() || !d.playlists.isEmpty() || d.playtime.daily > 0 || d.play_counts.isNotEmpty()) {
             scope.launch { r.save(d) }
         }

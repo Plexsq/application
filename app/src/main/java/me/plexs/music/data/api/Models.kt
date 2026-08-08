@@ -192,11 +192,20 @@ data class PlaytimeData(
 data class UserData(
     val queue: List<Song> = emptyList(),
     val queueIndex: Int = -1,
+    val queueUpdatedAt: Long = 0,
     val favorites: List<Song> = emptyList(),
     val recentlyPlayed: List<Song> = emptyList(),
     val playlists: List<UserPlaylist> = emptyList(),
+    val deletedPlaylists: List<PlaylistTombstone> = emptyList(),
     val playtime: PlaytimeData = PlaytimeData(),
     val play_counts: Map<String, Int> = emptyMap(),
+)
+
+@Serializable
+data class PlaylistTombstone(
+    val id: String = "",
+    val name: String? = null,
+    val deletedAt: Long = 0,
 )
 
 @Serializable
@@ -206,6 +215,7 @@ data class UserPlaylist(
     val image: String? = null,
     val songs: List<Song> = emptyList(),
     val createdAt: Long = 0,
+    val updatedAt: Long = 0,
 )
 
 @Serializable

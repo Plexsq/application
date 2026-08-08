@@ -282,6 +282,7 @@ fun DownloadIconButton(
     downloaded: Boolean,
     downloading: Boolean,
     onDownload: () -> Unit,
+    progress: Float? = null,
 ) {
     if (downloaded) {
         Icon(
@@ -291,10 +292,11 @@ fun DownloadIconButton(
             modifier = Modifier.width(28.dp).height(28.dp),
         )
     } else if (downloading) {
-        CircularProgressIndicator(
-            modifier = Modifier.size(22.dp),
-            strokeWidth = 2.dp,
-        )
+        if (progress != null) {
+            CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp, progress = { progress })
+        } else {
+            CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+        }
     } else {
         IconButton(onClick = onDownload) {
             Icon(Icons.Default.Download, contentDescription = "Download", tint = PlexMuted)

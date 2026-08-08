@@ -15,11 +15,20 @@ data class UserPlaylist(
     val image: String? = null,
     val songs: List<Song> = emptyList(),
     val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis(),
+)
+
+@Serializable
+data class PlaylistTombstone(
+    val id: String = "",
+    val name: String? = null,
+    val deletedAt: Long = 0,
 )
 
 @Serializable
 private data class PlaylistData(
     var playlists: List<UserPlaylist> = emptyList(),
+    var playlistDeletes: List<PlaylistTombstone> = emptyList(),
 )
 
 /**
@@ -42,7 +51,8 @@ class PlaylistStore(context: Context) {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return UserPlaylist("pl_${System.currentTimeMillis()}", "Untitled")
         val data = read()
-        val pl = UserPlaylist("pl_${System.currentTimeMillis()}", trimmed)
+        val now = System.currentTimeMillis()
+        val pl = UserPlaylist("pl_${now}", trimmed, createdAt = now, updatedAt = now)
         write(data.copy(playlists = data.playlists + pl))
         return pl
     }
@@ -54,7 +64,7 @@ class PlaylistStore(context: Context) {
         if (trimmed.isEmpty()) return
         val data = read()
         write(data.copy(playlists = data.playlists.map { pl ->
-            if (pl.id == id) pl.copy(name = trimmed) else pl
+            if (pl.id == id) pl.copy(name = trimmed, updatedAt = System.currentTimeMillis()) else pl
         }))
     }
 
@@ -63,7 +73,7 @@ class PlaylistStore(context: Context) {
         val data = read()
         val updated = data.playlists.map { pl ->
             if (pl.id == playlistId && pl.songs.none { it.id == song.id }) {
-                pl.copy(songs = pl.songs + song)
+                pl.copy(songs = pl.songs + song, updatedAt = System.currentTimeMillis())
             } else pl
         }
         write(data.copy(playlists = updated))
@@ -72,51 +82,69 @@ class PlaylistStore(context: Context) {
     fun removeSong(playlistId: String, songId: String) {
         val data = read()
         val updated = data.playlists.map { pl ->
-            if (pl.id == playlistId) pl.copy(songs = pl.songs.filterNot { it.id == songId }) else pl
+            if (pl.id == playlistId) pl.copy(songs = pl.songs.filterNot { it.id == songId }, updatedAt = System.currentTimeMillis()) else pl
         }
         write(data.copy(playlists = updated))
     }
 
     fun delete(playlistId: String) {
         val data = read()
-        write(data.copy(playlists = data.playlists.filterNot { it.id == playlistId }))
+        val name = data.playlists.firstOrNull { it.id == playlistId }?.name
+        write(data.copy(
+            playlists = data.playlists.filterNot { it.id == playlistId },
+            playlistDeletes = data.playlistDeletes + PlaylistTombstone(playlistId, name, System.currentTimeMillis()),
+        ))
+    }
+
+    /** Local deletion tombstones to push with the next save (so the account stays deleted). */
+    fun deletes(): List<PlaylistTombstone> = read().playlistDeletes
+
+    /** Clears a tombstone once the server has acknowledged the delete via its own list. */
+    fun clearDelete(id: String) {
+        val data = read()
+        if (data.playlistDeletes.none { it.id == id }) return
+        write(data.copy(playlistDeletes = data.playlistDeletes.filterNot { it.id == id }))
     }
 
     /**
-     * Merges the server-side playlist set into local storage: adopt the server
-     * set wholesale when local is empty, otherwise union by id. For playlists that
-     * already exist locally we ALSO merge in server-only songs (and server renames)
-     * so changes made on the desktop/another device appear without a restart —
-     * but we keep local-only songs so untracked local edits are never dropped.
+     * Applies the account's authoritative playlist state (server = truth):
+     *  - drops any local playlist that is tombstoned on the server (deleted on PC)
+     *  - adopts server playlists whose updatedAt is newer (renames, add/remove songs)
+     *  - keeps local playlists the server hasn't seen yet (will push on next save)
+     *  - clears our own tombstone once the server list reflects the delete
      */
-    fun syncFromServer(server: List<me.plexs.music.data.api.UserPlaylist>) {
-        if (server.isEmpty()) return
-        val local = read().playlists
-        val merged = if (local.isEmpty()) {
-            server.map { it.toLocal() }
-        } else {
-            val byId = local.associateBy { it.id }
-            val out = local.toMutableList()
-            for (sp in server) {
-                val existing = byId[sp.id]
-                if (existing == null) {
-                    out.add(sp.toLocal())
-                } else {
-                    val serverSeen = sp.songs.map { it.id }.toSet()
-                    // Server order + name take precedence so desktop changes propagate;
-                    // keep any local-only songs the server hasn't seen yet.
-                    val localOnly = existing.songs.filter { it.id !in serverSeen }
-                    val finalSongs = (sp.songs + localOnly).distinctBy { it.id }
-                    out[out.indexOf(existing)] = existing.copy(name = sp.name, songs = finalSongs)
+    fun syncFromServer(server: List<me.plexs.music.data.api.UserPlaylist>, serverDeletes: List<me.plexs.music.data.api.PlaylistTombstone>) {
+        val data = read()
+        val deleted = serverDeletes.map { it.id }.toSet()
+        // Drop locally-tombstoned playlists the server hasn't removed yet only when they
+        // are absent from the server list too; otherwise the server merge removed them.
+        val serverById = server.associateBy { it.id }
+
+        val local = data.playlists.filter { p ->
+            !deleted.contains(p.id) || serverById.containsKey(p.id)
+        }
+        val merged = local.toMutableList()
+        val byId = merged.associateBy { it.id }.toMutableMap()
+        for (sp in server) {
+            val existing = byId[sp.id]
+            if (existing == null) {
+                merged.add(sp.toLocal())
+                byId[sp.id] = sp.toLocal()
+            } else {
+                val sv = sp.updatedAt
+                val lv = existing.updatedAt
+                if (sv > lv) {
+                    val idx = merged.indexOf(existing)
+                    val adopted = sp.toLocal()
+                    merged[idx] = adopted
+                    byId[sp.id] = adopted
                 }
+                // else keep local (it's newer; it'll push on next save)
             }
-            out
         }
-        if (merged.map { it.id } != local.map { it.id } ||
-            merged.zip(local).any { it.first.name != it.second.name || it.first.songs != it.second.songs }
-        ) {
-            write(PlaylistData(playlists = merged))
-        }
+        // Clear tombstones the server has now applied (their ids are in serverDeletes).
+        val keeps = data.playlistDeletes.filter { !serverDeletes.any { d -> d.id == it.id } }
+        write(PlaylistData(playlists = merged, playlistDeletes = keeps))
     }
 
     private fun me.plexs.music.data.api.UserPlaylist.toLocal(): UserPlaylist =
@@ -126,6 +154,7 @@ class PlaylistStore(context: Context) {
             image = image,
             songs = songs,
             createdAt = createdAt,
+            updatedAt = updatedAt,
         )
 
     private fun read(): PlaylistData {

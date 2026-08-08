@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.OfflinePin
 import androidx.compose.material.icons.filled.PlaylistAdd
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -71,6 +72,8 @@ fun HomeScreen(services: PlexApp.Services, onOpenSection: (String) -> Unit) {
     val playlistsVersion by services.playlists.version.collectAsState()
     val playlists = remember(playlistsVersion) { services.playlists.list() }
     var refreshing by remember { mutableStateOf(false) }
+    val offlineVersion by services.offline.version.collectAsState()
+    val offlineCount = services.offline.list().size
 
     var showCreate by remember { mutableStateOf(false) }
     var menuPl by remember { mutableStateOf<UserPlaylist?>(null) }
@@ -110,6 +113,18 @@ fun HomeScreen(services: PlexApp.Services, onOpenSection: (String) -> Unit) {
                             Text("New Playlist", color = PlexAccent, fontWeight = FontWeight.Bold)
                         }
                     }
+                }
+                // Pinned "Offline downloads" entry — always the first library cell, fixed.
+                item {
+                    LibraryGridCard(
+                        thumbnail = null,
+                        icon = Icons.Default.OfflinePin,
+                        label = "Offline",
+                        sub = if (offlineCount > 0) "$offlineCount song${if (offlineCount != 1) "s" else ""} · ${services.offline.size()}" else "Download songs to play without data",
+                        onClick = { onOpenSection("offline") },
+                        onLongClick = null,
+                        accent = false,
+                    )
                 }
                 items(playlists, key = { it.id }) { pl ->
                     LibraryGridCard(

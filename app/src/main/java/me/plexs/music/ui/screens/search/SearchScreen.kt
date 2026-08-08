@@ -87,9 +87,11 @@ fun SearchScreen(services: PlexApp.Services, onOpenCatalog: (type: String, id: S
     val offlineVersion by offline.version.collectAsState()
     var downloadedIds by remember { mutableStateOf(offline.list().map { it.song.id }.toSet()) }
     var downloadedPlaylists by remember { mutableStateOf(offline.playLists().map { it.id }.toSet()) }
+    val offlinePlaylistById = remember(offlineVersion) { offline.playLists().associateBy { it.id } }
     var downloading by remember { mutableStateOf<Set<String>>(emptySet()) }
     val downloadStates by services.downloads.states.collectAsState()
     var addTarget by remember { mutableStateOf<Song?>(null) }
+    var showAllSongs by remember { mutableStateOf(false) }
     val userPlaylists by services.playlists.version.collectAsState()
 
     LaunchedEffect(offlineVersion) {
@@ -358,7 +360,8 @@ fun SearchScreen(services: PlexApp.Services, onOpenCatalog: (type: String, id: S
                         item {
                             SectionTitle("Songs")
                         }
-                        itemsIndexed(songs) { i, song ->
+                        val shown = if (showAllSongs) songs else songs.take(10)
+                        itemsIndexed(shown) { i, song ->
                             SongRow(
                                 song = song,
                                 onPlay = {
@@ -366,6 +369,7 @@ fun SearchScreen(services: PlexApp.Services, onOpenCatalog: (type: String, id: S
                                 },
                                 downloaded = song.id in downloadedIds,
                                 downloading = downloadStates[song.id] is DownloadState.Downloading,
+                                progress = (downloadStates[song.id] as? DownloadState.Downloading)?.progress,
                                 onDownload = { downloadSong(song) },
                                 onDelete = { scope.launch { offline.delete(song.id) } },
                                 onAddToPlaylist = { addTarget = song },
@@ -373,6 +377,20 @@ fun SearchScreen(services: PlexApp.Services, onOpenCatalog: (type: String, id: S
                                 onAddToQueue = { PlaybackController.addToQueue(context, listOf(song)) },
                                 onShare = { me.plexs.music.ui.components.shareSong(context, song) },
                             )
+                        }
+                        if (songs.size > 10) {
+                            item {
+                                TextButton(
+                                    onClick = { showAllSongs = !showAllSongs },
+                                    modifier = Modifier.padding(start = 8.dp, top = 2.dp),
+                                ) {
+                                    Text(
+                                        if (showAllSongs) "Show less" else "Show more songs (${songs.size - 10} more)",
+                                        color = PlexAccent,
+                                        fontWeight = FontWeight.Medium,
+                                    )
+                                }
+                            }
                         }
                     }
                     if (r.videos.isNotEmpty()) {
@@ -402,13 +420,22 @@ fun SearchScreen(services: PlexApp.Services, onOpenCatalog: (type: String, id: S
                             SectionTitle("Playlists")
                         }
                         items(r.playlists) { pl ->
+                            val ref = offlinePlaylistById[pl.id]
+                            val complete = ref != null && offline.completedPlaylist(ref)
+                            val doneN = ref?.let { offline.downloadedCount(it) } ?: 0
+                            val totalN = ref?.songIds?.size ?: 0
+                            val sub = when {
+                                ref != null && !complete && totalN > 0 -> "${pl.author?.let { "$it · " } ?: ""}$doneN/$totalN downloaded"
+                                else -> pl.author?.let { "$it · ${pl.itemCount ?: "?"} tracks" }
+                            }
                             CardRow(
                                 thumbnail = pl.thumbnail,
                                 title = pl.title ?: pl.name ?: "",
-                                subtitle = pl.author?.let { "$it · ${pl.itemCount ?: "?"} tracks" },
+                                subtitle = sub,
                                 onClick = { onOpenCatalog("playlist", pl.id) },
-                                downloaded = pl.id in downloadedPlaylists,
+                                downloaded = complete,
                                 downloading = pl.id in downloading,
+                                progress = if (ref != null && totalN > 0) (doneN.toFloat() / totalN).coerceIn(0f, 1f) else null,
                                 onDownload = { downloadPlaylist(pl) },
                             )
                         }
@@ -453,6 +480,7 @@ fun CardRow(
     modifier: Modifier = Modifier,
     downloaded: Boolean = false,
     downloading: Boolean = false,
+    progress: Float? = null,
     onDownload: (() -> Unit)? = null,
 ) {
     Row(
@@ -497,6 +525,7 @@ fun CardRow(
                 downloaded = downloaded,
                 downloading = downloading,
                 onDownload = onDownload,
+                progress = progress,
             )
         }
     }
@@ -512,6 +541,7 @@ fun SongRow(
         androidx.compose.foundation.layout.PaddingValues(start = 8.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
     downloaded: Boolean = false,
     downloading: Boolean = false,
+    progress: Float? = null,
     onDownload: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
     onAddToPlaylist: (() -> Unit)? = null,

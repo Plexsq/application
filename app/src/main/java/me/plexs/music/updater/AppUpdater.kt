@@ -9,7 +9,11 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
 import me.plexs.music.data.api.Http
@@ -21,6 +25,21 @@ object AppUpdater {
 
     private const val MANIFEST_URL =
         "https://github.com/Plexsq/application/releases/latest/download/update-manifest.json"
+
+    // App-lifetime worker so a download/install keeps running even if the user leaves
+    // the update dialog or the screen. Device death during install is the normal path
+    // anyway (the installer restarts the app); this just stops premature cancellation.
+    private val worker = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    @Volatile
+    private var activeJob: Job? = null
+
+    /** Runs the update off the composition scope; callbacks are posted to the main thread. */
+    fun start(context: Context, onProgress: (String, Long, Long) -> Unit, onDone: (Result) -> Unit) {
+        activeJob?.cancel()
+        activeJob = worker.launch {
+            run(context, onProgress, onDone)
+        }
+    }
 
     sealed class Result {
         object AlreadyCurrent : Result()
@@ -48,7 +67,7 @@ object AppUpdater {
         val main = Handler(Looper.getMainLooper())
         fun progress(label: String, done: Long, total: Long) =
             main.post { onProgress(label, done, total) }
-        fun done(r: Result) = main.post { onDone(r) }
+        fun done(r: Result) { android.util.Log.w("PlexUpdater", "update result=" + r); main.post { onDone(r) } }
 
         withContext(Dispatchers.IO) {
             try {
